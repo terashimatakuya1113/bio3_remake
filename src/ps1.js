@@ -10,7 +10,7 @@ export const MAX_LIGHTS = 4;
 
 // シーン全体で共有するライティング用ユニフォーム
 export const lighting = {
-  uAmbient: { value: new THREE.Color(0.16, 0.17, 0.22) },
+  uAmbient: { value: new THREE.Color(0.2, 0.21, 0.26) },
   uLightPos: { value: Array.from({ length: MAX_LIGHTS }, () => new THREE.Vector3()) },
   uLightColor: { value: Array.from({ length: MAX_LIGHTS }, () => new THREE.Color(0, 0, 0)) },
   uLightRange: { value: new Array(MAX_LIGHTS).fill(1) },

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { RES_W, RES_H, lighting, ps1Material, textures, addQuad, newBuilder, buildGeometry } from './ps1.js';
 import { buildRoom, buildDoorScene, ROOM } from './world.js';
-import { makeHumanoid, makeGun, resetPose } from './actors.js';
+import { makeHumanoid, makeGun, zeroPose, dampPose, applyPose, POSE_KEYS } from './actors.js';
+import { playerPose, zombieWalkPose, strideLength, WALK_SPEED, RUN_SPEED, BACK_SPEED } from './anim.js';
 import { initAudio, sfx } from './audio.js';
 import { TEXT, MEMO } from './text.js';
 
@@ -27,7 +28,9 @@ const CAMS = [
   { name: 'east', pos: [-0.6, 2.8, -3.6], look: [4.6, 0.5, 1.2], fov: 52, test: () => true },
 ];
 let camIndex = -1;
+let camLocked = false;
 function updateCamera(force = false) {
+  if (camLocked) return;
   let next = CAMS.length - 1;
   for (let i = 0; i < CAMS.length; i++) {
     if (CAMS[i].test(player.x, player.z, i === camIndex ? 0.35 : 0)) { next = i; break; }
@@ -51,9 +54,9 @@ const ZOMBIE_COLORS = { top: '#8c8672', sleeve: '#8c8672', belt: '#2a2420', pant
 const pModel = makeHumanoid(PLAYER_COLORS);
 scene.add(pModel.root);
 const gun = makeGun();
-gun.position.set(0, -0.58, 0.03);
+gun.position.set(0, -0.29, 0.03);
 gun.rotation.x = Math.PI / 2;
-pModel.parts.armR.add(gun);
+pModel.parts.elbowR.add(gun);
 const flashMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), ps1Material({ tint: 0xffdd88, emissive: 1 }));
 flashMesh.position.set(0, 0, 0.26);
 gun.add(flashMesh);
@@ -78,11 +81,13 @@ const zShadow = blobShadow();
 
 // ---------------------------------------------------------------- 状態
 const PLAYER_R = 0.28;
+const QUICK_TIME = 0.4;
 let state, player, zombie, flags, lightningTimer, flicker, flashT, hurtFlash, condT, doorT, endReady, lastTime;
 
 function resetGame() {
-  player = { x: -4.4, z: 2.2, yaw: Math.PI * 0.6, phase: 0, speed: 0, aim: 0, aiming: false, quick: 0,
-    health: 100, ammo: 10, hurt: 0, held: 0, fireCd: 0, recoil: 0 };
+  player = { x: -4.4, z: 2.2, yaw: Math.PI * 0.6, phase: 0, speed: 0, turnVel: 0, turnPhase: 0, aiming: false,
+    quick: 0, quickFrom: 0, health: 100, ammo: 10, hurt: 0, held: 0, fireCd: 0, recoil: 0,
+    aimW: 0, turnW: 0, limpW: 0, quickW: 0, heldW: 0, deadW: 0, idleT: 0, look: 0, lookTarget: 0, lookT: 0 };
   zombie = { x: 1.6, z: 0.9, yaw: Math.PI / 2, state: 'dormant', t: 0, hp: 5, phase: 0, groan: 3, stagger: 0 };
   flags = { key: false, ammo: false, usedKey: false };
   room.objects.key.visible = true;
@@ -277,90 +282,118 @@ const zombieActive = () => zombie.state === 'walk' || zombie.state === 'grab' ||
 const angleDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
 // ---------------------------------------------------------------- プレイヤー
+const approach = (v, target, step) => (v < target ? Math.min(target, v + step) : Math.max(target, v - step));
+const smooth = (v, target, rate, dt) => v + (target - v) * (1 - Math.exp(-rate * dt));
+const pTarget = zeroPose();
+const pPose = zeroPose();
+
 function updatePlayer(dt) {
   const p = player;
-  const P = pModel.parts;
-  p.fireCd -= dt; p.recoil = Math.max(0, p.recoil - dt * 5); p.hurt -= dt;
+  const t = performance.now() / 1000;
+  p.fireCd -= dt; p.recoil = Math.max(0, p.recoil - dt * 6); p.hurt -= dt;
 
   if (p.held > 0) {
     // ゾンビに掴まれている
     p.held -= dt;
-    animateHeld(P, p);
+    p.speed = 0; p.turnVel = 0;
+    p.heldW = smooth(p.heldW, 1, 14, dt);
+    p.aimW = smooth(p.aimW, 0, 14, dt);
+    animatePlayer(dt, t);
     return;
   }
+  p.heldW = smooth(p.heldW, 0, 8, dt);
 
   p.aiming = input.aim && p.quick <= 0;
-  const limp = p.health < 33 ? 0.65 : 1;
-  let move = 0;
+  const limp = p.health < 33 ? 0.62 : 1;
+  const turnDir = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+  let targetSpeed = 0, targetTurn = 0;
 
   if (p.quick > 0) {
-    const step = Math.min(p.quick, dt);
-    p.yaw += (Math.PI / 0.35) * step;
-    p.quick -= dt;
+    // クイックターン：0.4 秒で 180°、出だしと終わりをゆるめる
+    p.quick = Math.max(0, p.quick - dt);
+    const k = 1 - p.quick / QUICK_TIME;
+    p.yaw = p.quickFrom + Math.PI * k * k * (3 - 2 * k);
+    p.quickW = k;
+    if (p.quick === 0) p.quickW = 0;
   } else if (p.aiming) {
-    const turn = (input.left ? 1 : 0) - (input.right ? 1 : 0);
-    p.yaw += turn * 1.6 * dt;
+    targetTurn = turnDir * 1.7;
     if (pressed.has('action') && p.fireCd <= 0) fire();
   } else {
-    if (input.down && pressed.has('run')) { p.quick = 0.35; }
-    const turn = (input.left ? 1 : 0) - (input.right ? 1 : 0);
-    p.yaw += turn * (input.run && input.up ? 2.9 : 2.5) * dt;
-    if (input.up) move = (input.run ? 3.0 : 1.4) * limp;
-    else if (input.down) move = -0.9 * limp;
+    if (input.down && pressed.has('run')) { p.quick = QUICK_TIME; p.quickFrom = p.yaw; p.speed = 0; sfx.step(true); }
+    const running = input.run && input.up;
+    targetTurn = turnDir * (running ? 2.7 : 2.5);
+    if (input.up) targetSpeed = (running ? RUN_SPEED : WALK_SPEED) * limp;
+    else if (input.down) targetSpeed = -BACK_SPEED * limp;
     if (pressed.has('action')) interact();
   }
 
-  p.x += Math.sin(p.yaw) * move * dt;
-  p.z += Math.cos(p.yaw) * move * dt;
+  // 加速・減速と旋回の立ち上がり。止まるときのほうが速い
+  const speeding = Math.abs(targetSpeed) > Math.abs(p.speed) && Math.sign(targetSpeed) !== -Math.sign(p.speed);
+  p.speed = approach(p.speed, targetSpeed, (speeding ? 7.5 : 11) * dt);
+  p.turnVel = approach(p.turnVel, targetTurn, (targetTurn === 0 ? 24 : 16) * dt);
+  p.yaw += p.turnVel * dt;
+
+  p.x += Math.sin(p.yaw) * p.speed * dt;
+  p.z += Math.cos(p.yaw) * p.speed * dt;
+  const bx = p.x, bz = p.z;
   collide(p, PLAYER_R);
   if (zombieActive()) pushApart(p, zombie, 0.55);
-  p.speed = move;
+  // 壁に正面からぶつかったら足踏みを止める
+  const blocked = Math.hypot(p.x - bx, p.z - bz) / Math.max(1e-4, Math.abs(p.speed) * dt);
+  if (blocked > 0.85 && Math.abs(p.speed) > 0.2) p.speed = approach(p.speed, 0, 14 * dt);
 
-  // 歩行アニメ
+  // 歩行の位相は「進んだ距離 ÷ 歩幅」で進め、足が床を滑らないようにする
   const prev = p.phase;
-  p.phase += move * dt * (input.run && move > 2 ? 3.4 : 4.6);
-  if (move !== 0 && Math.floor(prev / Math.PI) !== Math.floor(p.phase / Math.PI)) sfx.step(move > 2);
-  p.aim += ((p.aiming ? 1 : 0) - p.aim) * Math.min(1, dt * 14);
+  p.phase += (p.speed * dt * Math.PI * 2) / strideLength(p.speed);
+  const contact = (ph) => Math.floor((ph - Math.PI / 2) / Math.PI);
+  if (Math.abs(p.speed) > 0.4 && contact(prev) !== contact(p.phase)) sfx.step(p.speed > 2);
 
-  resetPose(P);
-  const running = move > 2;
-  const amp = move === 0 ? 0 : running ? 0.85 : 0.5;
-  const s = Math.sin(p.phase);
-  P.legL.rotation.x = s * amp;
-  P.legR.rotation.x = -s * amp;
-  P.armL.rotation.x = -s * amp * 0.8;
-  P.armR.rotation.x = s * amp * 0.8;
-  P.hips.position.y = 0.9 + (move ? Math.abs(Math.cos(p.phase)) * 0.03 : Math.sin(performance.now() / 700) * 0.006);
-  P.torso.rotation.x = running ? 0.18 : 0;
-  if (limp < 1 && move) { P.torso.rotation.z = Math.sin(p.phase) * 0.08; P.torso.rotation.x = 0.15; }
-  P.head.rotation.x = limp < 1 ? 0.2 : 0;
+  const turningInPlace = Math.abs(p.turnVel) > 0.3 && Math.abs(p.speed) < 0.5;
+  p.turnW = smooth(p.turnW, turningInPlace ? 1 : 0, 10, dt);
+  const prevT = p.turnPhase;
+  if (p.turnW > 0.05) p.turnPhase += Math.abs(p.turnVel) * dt * 2.6;
+  if (turningInPlace && Math.floor(prevT / Math.PI) !== Math.floor(p.turnPhase / Math.PI)) sfx.step(false);
 
-  // 構え
-  if (p.aim > 0.01) {
-    const a = p.aim;
-    P.armR.rotation.x = THREE.MathUtils.lerp(P.armR.rotation.x, -Math.PI / 2 - p.recoil * 0.5, a);
-    P.armL.rotation.x = THREE.MathUtils.lerp(P.armL.rotation.x, -1.35, a);
-    P.armL.rotation.z = -0.45 * a;
-    P.armR.rotation.z = 0.08 * a;
-    P.torso.rotation.y = 0.1 * a;
-  }
-  gun.visible = p.aim > 0.5;
-  flashMesh.visible = flashT > 0;
+  p.aimW = smooth(p.aimW, p.aiming ? 1 : 0, 16, dt);
+  p.limpW = smooth(p.limpW, p.health < 33 ? 1 : 0, 3, dt);
+
+  // しばらく立ち止まっていると、周りを見回す
+  const idle = Math.abs(p.speed) < 0.05 && Math.abs(p.turnVel) < 0.05 && !p.aiming;
+  p.idleT = idle ? p.idleT + dt : 0;
+  if (p.idleT > 2.5) {
+    p.lookT -= dt;
+    if (p.lookT <= 0) { p.lookTarget = Math.random() < 0.35 ? 0 : (Math.random() - 0.5) * 1.2; p.lookT = 2 + Math.random() * 3; }
+  } else { p.lookTarget = 0; p.lookT = 0.5; }
+  p.look = smooth(p.look, p.lookTarget, 3, dt);
+
+  animatePlayer(dt, t);
   ui.hud.hidden = !p.aiming;
   ui.ammo.textContent = String(p.ammo).padStart(2, '0');
 }
 
-function animateHeld(P, p) {
-  resetPose(P);
-  const t = performance.now() / 90;
-  P.torso.rotation.x = -0.25;
-  P.torso.rotation.z = Math.sin(t) * 0.12;
-  P.armL.rotation.x = -1.2; P.armR.rotation.x = -1.0;
-  P.head.rotation.x = -0.3;
-  gun.visible = false;
-  flashMesh.visible = false;
+// 会話中・死亡時など、操作を受け付けないあいだも体は自然に止まる
+function settlePlayer(dt) {
+  const p = player;
+  p.speed = approach(p.speed, 0, 11 * dt);
+  p.turnVel = approach(p.turnVel, 0, 24 * dt);
+  p.phase += (p.speed * dt * Math.PI * 2) / strideLength(p.speed);
+  p.aimW = smooth(p.aimW, 0, 14, dt);
+  p.turnW = smooth(p.turnW, 0, 10, dt);
+  p.heldW = smooth(p.heldW, 0, 8, dt);
+  p.quickW = 0;
+  if (state === 'dead') p.deadW = smooth(p.deadW, 1, 4, dt);
+  animatePlayer(dt, performance.now() / 1000);
   ui.hud.hidden = true;
 }
+
+function animatePlayer(dt, t) {
+  playerPose(player, t, pTarget);
+  dampPose(pPose, pTarget, dt, 22);
+  applyPose(pModel.parts, pPose);
+  gun.visible = player.aimW > 0.6;
+  flashMesh.visible = flashT > 0;
+}
+
 
 function pushApart(a, b, minD) {
   const dx = a.x - b.x, dz = a.z - b.z;
@@ -393,42 +426,52 @@ function fire() {
 }
 
 // ---------------------------------------------------------------- ゾンビ
+const zTarget = zeroPose();
+const zPose = zeroPose();
+const LYING = { ...zeroPose(), armLz: 0.5, armRz: -0.9, headRy: 0.6, kneeL: 0.3, legLx: -0.2 };
+const DEAD = { ...zeroPose(), armLz: 0.7, armRz: -0.5, headRy: -0.5, kneeR: 0.5, legRx: -0.3 };
+
 function updateZombie(dt) {
   const z = zombie;
-  const P = zModel.parts;
+  const t = performance.now() / 1000;
   z.t += dt;
-  resetPose(P);
   zTilt.position.set(0, 0, 0);
   zTilt.rotation.set(0, 0, 0);
+  let rate = 10;
 
   if (z.state === 'dormant') {
     zTilt.rotation.x = -Math.PI / 2;
     zTilt.position.y = 0.12;
-    P.armL.rotation.z = 0.5; P.armR.rotation.z = -0.9; P.head.rotation.y = 0.6;
+    Object.assign(zTarget, LYING);
+    Object.assign(zPose, LYING);
   } else if (z.state === 'rising') {
-    const k = Math.min(1, z.t / 2.4);
+    // 上体を起こす → 膝をついて → 立ち上がる
+    const k = Math.min(1, z.t / 2.6);
     const e = k * k * (3 - 2 * k);
     zTilt.rotation.x = -Math.PI / 2 * (1 - e);
     zTilt.position.y = 0.12 * (1 - e);
-    P.armL.rotation.x = -1.3 * e; P.armR.rotation.x = -1.3 * e;
-    P.head.rotation.y = 0.6 * (1 - e);
-    P.head.rotation.z = 0.4 * e;
+    for (const key of POSE_KEYS) zTarget[key] = 0;
+    const crouch = Math.sin(Math.PI * e);
+    zTarget.kneeL = 1.3 * crouch; zTarget.kneeR = 0.9 * crouch;
+    zTarget.legLx = -0.9 * crouch; zTarget.legRx = -0.4 * crouch;
+    zTarget.hipsY = -0.25 * crouch;
+    zTarget.torsoRx = 0.5 * crouch;
+    zTarget.armLx = -1.3 * e; zTarget.armRx = -1.1 * e; zTarget.elbowL = -0.4; zTarget.elbowR = -0.6;
+    zTarget.headRz = 0.4 * e; zTarget.headRx = 0.5 * (1 - e) + 0.2;
+    rate = 6;
     if (k >= 1) { z.state = 'walk'; z.t = 0; }
   } else if (z.state === 'walk') {
     const dx = player.x - z.x, dz = player.z - z.z;
     const want = Math.atan2(dx, dz);
     const d = angleDiff(want, z.yaw);
-    z.yaw += Math.max(-1.4 * dt, Math.min(1.4 * dt, d));
-    const sp = 0.5;
+    z.yaw += Math.max(-1.3 * dt, Math.min(1.3 * dt, d));
+    // 引きずる足に合わせて速さが波打つ
+    z.phase += dt * 3.0;
+    const sp = 0.32 + 0.3 * Math.max(0, Math.cos(z.phase));
     z.x += Math.sin(z.yaw) * sp * dt;
     z.z += Math.cos(z.yaw) * sp * dt;
     collide(z, 0.3);
-    z.phase += dt * 3.2;
-    const s = Math.sin(z.phase);
-    P.legL.rotation.x = s * 0.35; P.legR.rotation.x = -s * 0.35;
-    P.armL.rotation.x = -1.35 + s * 0.1; P.armR.rotation.x = -1.3 - s * 0.1;
-    P.torso.rotation.z = s * 0.08;
-    P.head.rotation.z = 0.35; P.head.rotation.x = 0.2;
+    zombieWalkPose(z, t, zTarget);
     z.groan -= dt;
     if (z.groan <= 0) { sfx.groan(); z.groan = 3 + Math.random() * 3; }
     const dist = Math.hypot(dx, dz);
@@ -437,10 +480,13 @@ function updateZombie(dt) {
       player.held = 1.1;
       player.yaw = Math.atan2(-dx, -dz);
       player.aiming = false;
+      player.quick = 0; player.quickW = 0;
     }
   } else if (z.state === 'grab') {
-    P.armL.rotation.x = -1.5; P.armR.rotation.x = -1.5;
-    P.torso.rotation.x = 0.25; P.head.rotation.x = 0.4 + Math.sin(z.t * 20) * 0.1;
+    zombieWalkPose(z, t, zTarget);
+    zTarget.armLx = -1.5; zTarget.armRx = -1.45; zTarget.elbowL = -0.7; zTarget.elbowR = -0.8;
+    zTarget.torsoRx = 0.3; zTarget.headRx = 0.5 + Math.sin(z.t * 20) * 0.1; zTarget.headRz = 0.1;
+    zTarget.legLx = -0.15; zTarget.legRx = 0.2; zTarget.kneeL = 0.25;
     if (z.t > 0.45 && !z.bit) {
       z.bit = true;
       sfx.bite();
@@ -459,25 +505,36 @@ function updateZombie(dt) {
     }
   } else if (z.state === 'stagger') {
     z.stagger -= dt;
-    P.torso.rotation.x = -0.35; P.head.rotation.x = -0.4;
-    P.armL.rotation.x = -0.9; P.armR.rotation.x = -0.7;
+    zombieWalkPose(z, t, zTarget);
+    zTarget.torsoRx = -0.35; zTarget.headRx = -0.45;
+    zTarget.armLx = -0.8; zTarget.armRx = -0.6;
+    zTarget.kneeL = 0.35; zTarget.legRx = 0.25;
+    rate = 18;
     if (z.stagger <= 0) { z.state = 'walk'; z.t = 0; }
   } else if (z.state === 'dying') {
-    const k = Math.min(1, z.t / 0.8);
-    zTilt.rotation.x = -Math.PI / 2 * k * k;
+    const k = Math.min(1, z.t / 0.9);
+    // 膝から崩れてから仰向けに倒れる
+    const kneel = Math.min(1, k * 2);
+    zTilt.rotation.x = -Math.PI / 2 * Math.max(0, (k - 0.35) / 0.65) ** 2;
     zTilt.position.y = 0.12 * k;
-    P.armL.rotation.x = -1.3 * (1 - k); P.armR.rotation.x = -1.3 * (1 - k);
+    for (const key of POSE_KEYS) zTarget[key] = DEAD[key] * k;
+    zTarget.kneeL += 1.1 * kneel * (1 - k); zTarget.kneeR += 0.9 * kneel * (1 - k);
+    zTarget.hipsY = -0.3 * kneel * (1 - k);
+    rate = 14;
     if (k >= 1) z.state = 'dead';
   } else if (z.state === 'dead') {
     zTilt.rotation.x = -Math.PI / 2;
     zTilt.position.y = 0.12;
-    P.armL.rotation.z = 0.7; P.armR.rotation.z = -0.5; P.head.rotation.y = -0.5;
+    Object.assign(zTarget, DEAD);
   }
+  dampPose(zPose, zTarget, dt, rate);
+  applyPose(zModel.parts, zPose);
   zRoot.position.set(z.x, 0, z.z);
   zRoot.rotation.y = z.yaw;
   zShadow.visible = !(z.state === 'dormant' || z.state === 'dead');
   zShadow.position.x = z.x; zShadow.position.z = z.z;
 }
+
 
 function die() {
   state = 'dead';
@@ -549,14 +606,17 @@ function update(dt) {
     updatePlayer(dt);
   } else if (state === 'message') {
     updateMessage(dt);
+    settlePlayer(dt);
   } else if (state === 'doc') {
     if (pressed.has('action')) { ui.doc.hidden = true; state = 'play'; }
+    settlePlayer(dt);
   } else if (state === 'door') {
     doorT += dt;
     if (doorT > 0.35) ui.fade.style.opacity = Math.max(0, 1 - (doorT - 0.35) / 0.4);
     if (doorT > 3.6) ui.fade.style.opacity = Math.min(1, (doorT - 3.6) / 0.5);
     if (doorT > 4.3) { state = 'end'; ui.end.hidden = false; endReady = false; setTimeout(() => { endReady = true; }, 600); }
   } else if (state === 'end' || state === 'dead') {
+    if (state === 'dead') settlePlayer(dt);
     if (endReady && pressed.has('action')) {
       resetGame();
       state = 'intro'; introT = 0; ui.intro.hidden = false; ui.fade.style.opacity = 1;
@@ -624,9 +684,12 @@ function updatePlayerPose() {
   pModel.root.position.set(player.x, 0, player.z);
   pModel.root.rotation.y = player.yaw;
   pShadow.position.x = player.x; pShadow.position.z = player.z;
+  pModel.root.rotation.order = 'YXZ';
+  playerPose(player, 0, pPose);
+  applyPose(pModel.parts, pPose);
   gun.visible = false;
   flashMesh.visible = false;
 }
 
 // テスト・デバッグ用の窓口
-window.__game = { get state() { return state; }, player: () => player, zombie: () => zombie, press, release, input, setCam: (i) => { camIndex = i; const c = CAMS[i]; camera.position.set(...c.pos); camera.fov = c.fov; camera.updateProjectionMatrix(); camera.lookAt(...c.look); } };
+window.__game = { get state() { return state; }, lookFrom: (pos, look, fov = 40) => { camLocked = !!pos; if (!pos) return; camera.position.set(...pos); camera.fov = fov; camera.updateProjectionMatrix(); camera.lookAt(...look); }, player: () => player, zombie: () => zombie, press, release, input, setCam: (i) => { camIndex = i; const c = CAMS[i]; camera.position.set(...c.pos); camera.fov = c.fov; camera.updateProjectionMatrix(); camera.lookAt(...c.look); } };
