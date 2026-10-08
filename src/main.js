@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { RES_W, RES_H, lighting, ps1Material, textures, addQuad, newBuilder, buildGeometry } from './ps1.js';
+import { RES_W, RES_H, lighting, ps1Material, textures, addQuad, newBuilder, buildGeometry, boxMesh } from './ps1.js';
 import { buildRoom, buildDoorScene, ROOM } from './world.js';
 import { makeHumanoid, makeGun, zeroPose, dampPose, applyPose, POSE_KEYS } from './actors.js';
 import { playerPose, zombieWalkPose, strideLength, WALK_SPEED, RUN_SPEED, BACK_SPEED } from './anim.js';
 import { initAudio, sfx } from './audio.js';
 import { TEXT, MEMO } from './text.js';
+import { createBackdrop } from './bake.js';
 
 // ---------------------------------------------------------------- 描画の準備
 const canvas = document.getElementById('game');
@@ -12,6 +13,10 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPrefer
 renderer.setPixelRatio(1);
 renderer.setSize(RES_W, RES_H, false);
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
+const backdrop = createBackdrop(renderer);
 
 const room = buildRoom();
 const scene = room.scene;
@@ -28,6 +33,7 @@ const CAMS = [
   { name: 'east', pos: [-0.6, 2.8, -3.6], look: [4.6, 0.5, 1.2], fov: 52, test: () => true },
 ];
 let camIndex = -1;
+const fx = { lit: 1, bolt: 0, flash: 0 };
 let camLocked = false;
 function updateCamera(force = false) {
   if (camLocked) return;
@@ -46,10 +52,9 @@ function updateCamera(force = false) {
 }
 
 // ---------------------------------------------------------------- 登場人物
-const PLAYER_COLORS = { top: '#2d3b57', sleeve: '#2d3b57', belt: '#3a2b1e', pants: '#3b3a38', boots: '#1c1a18', skin: '#d4a07a', hair: '#3a2416',
-  extra: [[[-0.2, 0.28, -0.13], [0.2, 0.5, -0.11], '#3a4a3a']] };
-const ZOMBIE_COLORS = { top: '#8c8672', sleeve: '#8c8672', belt: '#2a2420', pants: '#3a4250', boots: '#2a2622', skin: '#8e9378', hair: '#2a2a22',
-  extra: [[[-0.1, 0.12, 0.11], [0.12, 0.42, 0.125], '#5a1410'], [[-0.2, 0.0, 0.11], [-0.05, 0.12, 0.125], '#4a100c']] };
+const PLAYER_COLORS = { top: '#3a4a66', sleeve: '#3a4a66', vest: '#23262a', collar: '#2a3448', pants: '#4a4a44', boots: '#1e1c1a', skin: '#d0a07c', hair: '#3a2416', lips: '#9a5a48',
+  extra: [[[-0.07, 0.06, 0.11], [0.07, 0.2, 0.14], '#2a2c2e'], [[-0.17, 0.3, -0.16], [0.17, 0.52, -0.1], '#2e3428']] };
+const ZOMBIE_COLORS = { top: '#9a9480', sleeve: '#9a9480', pants: '#3e4654', boots: '#2a2622', skin: '#8e957c', skinTone: '#7a806a', hair: '#2a2a22', torn: true, forearmSleeve: false };
 
 const pModel = makeHumanoid(PLAYER_COLORS);
 scene.add(pModel.root);
@@ -57,7 +62,7 @@ const gun = makeGun();
 gun.position.set(0, -0.29, 0.03);
 gun.rotation.x = Math.PI / 2;
 pModel.parts.elbowR.add(gun);
-const flashMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), ps1Material({ tint: 0xffdd88, emissive: 1 }));
+const flashMesh = boxMesh([-0.04, -0.04, -0.04], [0.04, 0.04, 0.04], ps1Material({ tint: 0xffdd88, emissive: 1 }), 1, 1);
 flashMesh.position.set(0, 0, 0.26);
 gun.add(flashMesh);
 
@@ -555,7 +560,7 @@ function updateLights(dt) {
   if (flicker.t <= 0) { flicker.off = 0.05 + Math.random() * 0.12; flicker.t = 1.5 + Math.random() * 5; }
   let fl = 1;
   if (flicker.off > 0) { flicker.off -= dt; fl = Math.random() < 0.5 ? 0.15 : 0.6; }
-  room.objects.fluoro.material.uniforms.uTint.value.setScalar(0.3 + 0.7 * fl);
+  fx.lit = fl;
   setLight(0, 0, 2.9, 0, 0.95 * fl, 0.92 * fl, 0.8 * fl, 9.5);
   setLight(1, -3.0, 1.15, -3.45, 1.0, 0.55, 0.22, 4.2);
 
@@ -565,7 +570,8 @@ function updateLights(dt) {
   if (lightningTimer < 0.25 && lightningTimer > 0) bolt = (lightningTimer > 0.17 || (lightningTimer < 0.1 && lightningTimer > 0.04)) ? 1 : 0;
   if (lightningTimer <= 0) { lightningTimer = 9 + Math.random() * 12; sfx.thunder(0.6 + Math.random() * 0.8); }
   setLight(2, 0.3, 2.0, -3.2, 0.18 + bolt * 1.6, 0.24 + bolt * 1.7, 0.4 + bolt * 2.0, 7 + bolt * 5);
-  room.objects.winMat.uniforms.uEmissive.value = 0.35 + bolt * 0.65;
+  fx.bolt = bolt;
+  room.objects.winMat.uniforms.uEmissive.value = 0.6 + bolt * 0.4;
   room.objects.winMat.uniforms.uUvOffset.value.y += dt * 1.6;
 
   // 銃口の光
@@ -575,6 +581,7 @@ function updateLights(dt) {
     gun.getWorldPosition(w);
     setLight(3, w.x, w.y, w.z, 2.2, 1.6, 0.8, 6);
   } else setLight(3, 0, 0, 0, 0, 0, 0, 1);
+  fx.flash = flashT > 0 ? 1 : 0;
 }
 
 function doorLights() {
@@ -655,10 +662,10 @@ function render() {
     const dolly = THREE.MathUtils.smoothstep(t, 1.6, 3.9);
     doorCam.position.set(0.05, 1.45 - dolly * 0.1, 2.4 - dolly * 3.6);
     doorCam.lookAt(0.05, 1.25, -2);
-    doorLights();
-    renderer.render(doorFx.scene, doorCam);
+    renderer.shadowMap.needsUpdate = true;
+    backdrop.renderHQ(doorFx.scene, doorCam, null, 0.9, true);
   } else {
-    renderer.render(scene, camera);
+    backdrop.renderFrame(scene, camera, backgrounds[camIndex], fx);
   }
 }
 
@@ -672,6 +679,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+const backgrounds = backdrop.bakeRoom(room, CAMS, camera);
 resetGame();
 state = 'title';
 updateZombie(0);
