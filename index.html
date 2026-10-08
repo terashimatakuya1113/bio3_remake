@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BIOHAZARD 3 ROOM 01</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
+<style>
+  /* 単一の暗い画面。ゲーム画面(4:3)を中央に置き、タッチ端末では下に操作ボタン */
+  :root {
+    --void: #000;
+    --ink: #e8e4d8;
+    --dim: #8a857a;
+    --blood: #b01a10;
+    --panel: rgba(4, 6, 10, 0.82);
+    --line: #5a5a62;
+    --pixel: "DotGothic16", "MS Gothic", "Osaka-Mono", monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--void); color: var(--ink); font-family: var(--pixel);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    padding-inline: 16px; box-sizing: border-box; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #screen {
+    position: relative; container-type: inline-size;
+    width: min(100%, calc((100dvh - var(--pad-bottom, 48px)) * 4 / 3)); aspect-ratio: 4 / 3; max-width: 100%;
+    background: var(--void); overflow: hidden;
+  }
+  #game { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .layer { position: absolute; inset: 0; }
+  #fade { background: var(--void); opacity: 1; pointer-events: none; }
+  #hurt { background: var(--blood); opacity: 0; pointer-events: none; mix-blend-mode: screen; }
+
+  #title, #intro, #end, #dead { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2.5cqw; background: var(--void); }
+  #title .eyebrow { font-size: 2.6cqw; letter-spacing: 0.4em; color: var(--dim); }
+  #title h1 { margin: 0; font-weight: 400; font-size: 11cqw; letter-spacing: 0.08em; color: var(--ink); text-shadow: 0.5cqw 0.5cqw 0 var(--blood); }
+  #title .sub { font-size: 3.2cqw; color: var(--ink); }
+  .blink { font-size: 3cqw; color: var(--dim); animation: blink 1.2s steps(2) infinite; margin-top: 4cqw; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #intro { background: transparent; font-size: 3.6cqw; line-height: 1.9; white-space: pre-line; opacity: 0; pointer-events: none; }
+  #end h2, #dead h2 { margin: 0; font-weight: 400; font-size: 7cqw; letter-spacing: 0.1em; }
+  #dead h2 { color: var(--blood); font-size: 9cqw; }
+  #end p, #dead p { margin: 0; font-size: 3.2cqw; color: var(--dim); }
+
+  #msg {
+    position: absolute; left: 4%; right: 4%; bottom: 4%; min-height: 20%;
+    background: var(--panel); border: 0.4cqw solid var(--line); box-sizing: border-box;
+    padding: 2.4cqw 3.2cqw; font-size: 4.2cqw; line-height: 1.6; white-space: pre-line;
+  }
+  #choice { display: flex; gap: 9cqw; justify-content: center; margin-top: 1cqw; }
+  #choice span { padding-left: 3.6cqw; position: relative; color: var(--dim); }
+  #choice span.sel { color: var(--ink); }
+  #choice span.sel::before { content: "▶"; position: absolute; left: 0; font-size: 0.75em; top: 0.25em; }
+
+  #doc { background: rgba(0, 0, 0, 0.88); display: flex; align-items: center; justify-content: center; }
+  #doc .sheet { width: 64%; max-height: 94%; overflow: hidden; background: #cfc8b0; color: #2a241c; padding: 3cqw 4.5cqw; box-sizing: border-box; box-shadow: 1cqw 1cqw 0 rgba(0,0,0,.6); }
+  #doc-title { margin: 0 0 1.6cqw; font-size: 3.4cqw; font-weight: 400; border-bottom: 0.3cqw solid #6a604c; padding-bottom: 1cqw; }
+  #doc-body { font-size: 2.35cqw; line-height: 1.5; white-space: pre-line; }
+  #doc .hint { text-align: right; font-size: 2.2cqw; color: #6a604c; margin-top: 1cqw; }
+
+  #hud { position: absolute; right: 4%; bottom: 4%; font-size: 3.4cqw; color: #9ce08a; text-shadow: 0.3cqw 0.3cqw 0 #000; letter-spacing: 0.1em; }
+  #hud b { font-weight: 400; font-size: 5.2cqw; }
+  #cond { position: absolute; left: 4%; top: 4%; font-size: 3.6cqw; letter-spacing: 0.15em; padding: 0.8cqw 2cqw; background: var(--panel); border: 0.3cqw solid var(--line); }
+  #cond[data-level="fine"] { color: #7ee07e; }
+  #cond[data-level="caution"] { color: #e0c050; }
+  #cond[data-level="danger"] { color: #e04030; }
+
+  .keys { font-size: 13px; color: var(--dim); text-align: center; line-height: 1.6; }
+  .keys kbd { font-family: var(--pixel); color: var(--ink); border: 1px solid var(--line); padding: 0 5px; }
+
+  #touch { display: none; width: min(100%, 520px); justify-content: space-between; align-items: center; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  @media (pointer: coarse) {
+    :root { --pad-bottom: 190px; }
+    #touch { display: flex; }
+    .keys { display: none; }
+  }
+  .pad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px; }
+  .btns { display: grid; grid-template-columns: repeat(2, 72px); gap: 10px; }
+  #touch button {
+    font-family: var(--pixel); color: var(--ink); background: #15161a; border: 2px solid var(--line); border-radius: 8px;
+    font-size: 15px; touch-action: none; -webkit-tap-highlight-color: transparent;
+  }
+  #touch button.on { background: #3a3c44; }
+  .btns button { height: 64px; }
+  .btns .wide { grid-column: span 2; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { .blink { animation: none; } }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="screen">
+  <canvas id="game" width="320" height="240"></canvas>
+  <div id="cond" hidden></div>
+  <div id="hud" hidden>HANDGUN <b id="ammo">10</b></div>
+  <div id="msg" class="layer-msg" hidden><div id="msg-text"></div><div id="choice" hidden></div></div>
+  <div id="doc" class="layer" hidden>
+    <div class="sheet"><h2 id="doc-title"></h2><div id="doc-body"></div><div class="hint">▶ 閉じる</div></div>
+  </div>
+  <div id="hurt" class="layer"></div>
+  <div id="fade" class="layer"></div>
+  <div id="intro" class="layer" hidden>1998年10月2日 深夜
+ラクーンシティ郊外
+アンブレラ社 物流センター 管理事務所</div>
+  <div id="end" class="layer" hidden><h2>ROOM 01 CLEAR</h2><p>試作版はここまでです</p><p class="blink">もう一度遊ぶ</p></div>
+  <div id="dead" class="layer" hidden><h2>YOU DIED</h2><p class="blink">もう一度遊ぶ</p></div>
+  <div id="title" class="layer">
+    <div class="eyebrow">FAN SEQUEL PROTOTYPE</div>
+    <h1>BIOHAZARD 3</h1>
+    <div class="sub">非公式ファン続編　ROOM 01</div>
+    <div class="blink">PRESS Z / TAP TO START</div>
+  </div>
+</div>
+
+<div class="keys">
+  <kbd>↑↓←→</kbd> 移動（ラジコン操作）　<kbd>X</kbd>/<kbd>Shift</kbd> 走る　<kbd>Z</kbd> 調べる・撃つ　<kbd>C</kbd> 構える（押し続け）<br>
+  <kbd>↓</kbd>+<kbd>X</kbd> クイックターン
+</div>
+
+<div id="touch">
+  <div class="pad">
+    <span></span><button data-btn="up" aria-label="前進">▲</button><span></span>
+    <button data-btn="left" aria-label="左を向く">◀</button><span></span><button data-btn="right" aria-label="右を向く">▶</button>
+    <span></span><button data-btn="down" aria-label="後退">▼</button><span></span>
+  </div>
+  <div class="btns">
+    <button data-btn="aim">構え</button>
+    <button data-btn="run">走る</button>
+    <button data-btn="action" class="wide">調べる／撃つ</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
