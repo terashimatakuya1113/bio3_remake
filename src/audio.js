@@ -43,12 +43,18 @@ function burst({ freq = 800, q = 1, type = 'bandpass', peak = 0.5, attack = 0.00
   src.start(t, Math.random()); src.stop(t + attack + decay + 0.05);
 }
 
+let rainGain = null;
+export function setRain(level) {
+  if (rainGain) rainGain.gain.setTargetAtTime(0.05 * level, ctx.currentTime, 0.3);
+}
+
 function startRain() {
   const src = noise(true);
   const f = ctx.createBiquadFilter();
   f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.4;
   const g = ctx.createGain();
   g.gain.value = 0.05;
+  rainGain = g;
   src.connect(f).connect(g).connect(master);
   src.start();
 }
@@ -168,6 +174,45 @@ export const sfx = {
       const g = ctx.createGain(); env(g, t + i * 0.12, 0.01, 0.1, 0.4);
       o.connect(g).connect(master); o.start(t + i * 0.12); o.stop(t + i * 0.12 + 0.5);
     });
+  },
+  // 窓ガラスが割れる：低い衝撃と、散らばる破片の音
+  glass() {
+    burst({ freq: 200, q: 0.8, type: 'lowpass', peak: 0.9, decay: 0.3 });
+    burst({ freq: 4200, q: 0.6, peak: 0.7, decay: 0.5 });
+    for (let i = 0; i < 9; i++) burst({ freq: 3000 + Math.random() * 4000, q: 12, peak: 0.25, decay: 0.08 + Math.random() * 0.1, delay: 0.1 + Math.random() * 0.8 });
+  },
+  growl() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 62 + Math.random() * 12;
+    const am = ctx.createOscillator(); am.frequency.value = 23;
+    const ag = ctx.createGain(); ag.gain.value = 0.5;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 480; f.Q.value = 2.5;
+    const g = ctx.createGain(); env(g, t, 0.15, 0.4, 1.1);
+    const v = ctx.createGain(); v.gain.value = 0.6;
+    am.connect(ag).connect(v.gain);
+    o.connect(f).connect(v).connect(g).connect(master);
+    o.start(t); am.start(t); o.stop(t + 1.4); am.stop(t + 1.4);
+  },
+  bark() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    [0, 0.16].forEach((d) => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(520, t + d); o.frequency.exponentialRampToValueAtTime(240, t + d + 0.12);
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 1.5;
+      const g = ctx.createGain(); env(g, t + d, 0.005, 0.45, 0.13);
+      o.connect(f).connect(g).connect(master); o.start(t + d); o.stop(t + d + 0.2);
+      burst({ freq: 1500, q: 1, peak: 0.25, decay: 0.08, delay: d });
+    });
+  },
+  yelp() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(1100, t); o.frequency.exponentialRampToValueAtTime(420, t + 0.35);
+    const g = ctx.createGain(); env(g, t, 0.01, 0.3, 0.35);
+    o.connect(g).connect(master); o.start(t); o.stop(t + 0.45);
   },
   locked() {
     burst({ freq: 1800, q: 6, peak: 0.25, decay: 0.08 });

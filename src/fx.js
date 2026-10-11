@@ -36,6 +36,16 @@ export function createFx(scene) {
   let stainNext = 0;
   const pool = floorQuad(1.3, poolMat);
   let poolT = -1;
+  // ガラス片：床に落ちても消えずに残る
+  const glassMat = ps1Material({ tint: 0xa0b8d0, emissive: 0.3, opacity: 0.75 });
+  const shards = [];
+  for (let i = 0; i < 30; i++) {
+    const w = 0.03 + (i % 4) * 0.015;
+    const m = boxMesh([-w, -0.004, -w * 0.7], [w, 0.004, w * 0.7], glassMat, 1, 1);
+    m.visible = false;
+    scene.add(m);
+    shards.push({ m, v: new THREE.Vector3(), spin: 0, live: false });
+  }
   let shellNext = 0;
 
   function addStain(x, z) {
@@ -69,6 +79,14 @@ export function createFx(scene) {
       s.v.set(rx * 1.4 - Math.sin(yaw) * 0.4, 2.0, rz * 1.4 - Math.cos(yaw) * 0.4);
       s.spin = 18;
     },
+    glassBurst(x, y, z, w, h) {
+      for (const s of shards) {
+        s.live = true; s.m.visible = true;
+        s.m.position.set(x + (Math.random() - 0.5) * w, y + (Math.random() - 0.5) * h, z);
+        s.v.set((Math.random() - 0.5) * 2.2, Math.random() * 1.5, 1.2 + Math.random() * 2.5);
+        s.spin = 6 + Math.random() * 10;
+      }
+    },
     startPool(x, z) {
       pool.visible = true;
       pool.position.set(x, 0.011, z);
@@ -101,6 +119,13 @@ export function createFx(scene) {
           s.spin *= 0.5;
         }
       }
+      for (const s of shards) {
+        if (!s.live) continue;
+        s.v.y -= GRAVITY * dt;
+        s.m.position.addScaledVector(s.v, dt);
+        s.m.rotation.x += s.spin * dt; s.m.rotation.z += s.spin * 0.7 * dt;
+        if (s.m.position.y <= 0.01) { s.m.position.y = 0.01; s.m.rotation.x = 0; s.m.rotation.z = 0; s.live = false; }
+      }
       if (poolT >= 0 && poolT < 4) {
         poolT += dt;
         pool.scale.setScalar(0.05 + 0.95 * Math.min(1, poolT / 4) ** 0.5);
@@ -111,6 +136,7 @@ export function createFx(scene) {
       for (const s of shells) { s.life = 0; s.m.visible = false; }
       for (const s of stains) s.visible = false;
       pool.visible = false; poolT = -1;
+      for (const s of shards) { s.live = false; s.m.visible = false; }
     },
   };
 }

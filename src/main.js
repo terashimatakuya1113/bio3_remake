@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { RES_W, RES_H, lighting, ps1Material, textures, addQuad, newBuilder, buildGeometry, boxMesh } from './ps1.js';
+import { RES_W, RES_H, lighting, ps1Material, textures, addQuad, newBuilder, buildGeometry, boxMesh, rand } from './ps1.js';
 import { buildRoom, buildDoorScene, ROOM } from './world.js';
 import { makeHumanoid, makeGun, zeroPose, dampPose, applyPose, POSE_KEYS } from './actors.js';
 import { playerPose, zombieWalkPose, strideLength, WALK_SPEED, RUN_SPEED, BACK_SPEED } from './anim.js';
-import { initAudio, sfx } from './audio.js';
+import { initAudio, sfx, setRain } from './audio.js';
+import { makeDog, dogZero, dogPose, dampDog, applyDog } from './dog.js';
 import { TEXT, MEMO } from './text.js';
 import { createBackdrop } from './bake.js';
 import { createFx } from './fx.js';
@@ -30,22 +31,24 @@ const doorCam = new THREE.PerspectiveCamera(50, RES_W / RES_H, 0.05, 30);
 
 // 固定カメラ。上から順に判定し、今のカメラだけ判定を広げてチラつきを防ぐ
 const CAMS = [
-  { name: 'door', pos: [2.5, 1.45, -0.7], look: [5.7, 1.0, 2.7], fov: 54, test: (x, z, m) => x > 4.0 - m && z > 1.2 - m },
+  { name: 'door', pos: [2.2, 1.5, -1.3], look: [5.2, 0.9, 2.6], fov: 58, test: (x, z, m) => (x > 3.0 - m && z > 1.2 - m) || (x > 2.2 - m && z > 2.2 - m) },
   { name: 'window', pos: [1.6, 1.55, 1.6], look: [-0.1, 1.05, -4], fov: 56, test: (x, z, m) => x > -1.5 - m && x < 2.2 + m && z < -1.3 + m },
-  { name: 'start', pos: [-1.5, 1.7, 3.7], look: [-4.9, 0.9, 0.0], fov: 52, test: (x, z, m) => x < -2.5 + m && z > 0.4 - m },
-  { name: 'typewriter', pos: [-0.9, 2.1, 0.7], look: [-4.3, 0.8, -3.3], fov: 50, test: (x, z, m) => x < -1.5 + m },
+  { name: 'start', pos: [-1.3, 1.75, 3.75], look: [-5.0, 0.9, 0.8], fov: 56, test: (x, z, m) => (x < -2.1 + m && z > -0.6 - m) || (x < -1.5 + m && z > 2.6 - m) },
+  { name: 'typewriter', pos: [-0.9, 2.1, 0.7], look: [-4.3, 0.8, -3.3], fov: 50, test: (x, z, m) => x < -1.5 + m && z < -0.6 + m },
   { name: 'center', pos: [-2.7, 1.55, -2.5], look: [2.0, 0.7, 2.6], fov: 56, test: (x, z, m) => x < 2.2 + m },
   { name: 'east', pos: [1.0, 2.2, 2.7], look: [4.7, 0.7, -1.7], fov: 52, test: () => true },
 ];
 let camIndex = -1;
 const fx = { lit: 1, bolt: 0, flash: 0 };
 let camLocked = false;
+let camForce = -1;  // イベント中だけ使う固定カメラ
 function updateCamera(force = false) {
   if (camLocked) return;
   let next = CAMS.length - 1;
   for (let i = 0; i < CAMS.length; i++) {
     if (CAMS[i].test(player.x, player.z, i === camIndex ? 0.35 : 0)) { next = i; break; }
   }
+  if (camForce >= 0) next = camForce;
   if (next !== camIndex || force) {
     camIndex = next;
     const c = CAMS[next];
@@ -59,6 +62,7 @@ function updateCamera(force = false) {
 // ---------------------------------------------------------------- 登場人物
 const PLAYER_COLORS = { top: '#3a4a66', sleeve: '#3a4a66', vest: '#23262a', collar: '#2a3448', pants: '#4a4a44', boots: '#1e1c1a', skin: '#d0a07c', hair: '#3a2416', lips: '#9a5a48',
   extra: [[[-0.07, 0.06, 0.11], [0.07, 0.2, 0.14], '#2a2c2e'], [[-0.17, 0.3, -0.16], [0.17, 0.52, -0.1], '#2e3428']] };
+const STAFF_COLORS = { top: '#6e7c8c', sleeve: '#6e7c8c', collar: '#4a5664', pants: '#2c2e36', boots: '#1e1c1a', skin: '#8a917a', skinTone: '#767c66', hair: '#3a2e22', torn: true };
 const ZOMBIE_COLORS = { top: '#9a9480', sleeve: '#9a9480', pants: '#3e4654', boots: '#2a2622', skin: '#8e957c', skinTone: '#7a806a', hair: '#2a2a22', torn: true, forearmSleeve: false };
 
 const pModel = makeHumanoid(PLAYER_COLORS);
@@ -71,12 +75,44 @@ const flashMesh = boxMesh([-0.04, -0.04, -0.04], [0.04, 0.04, 0.04], ps1Material
 flashMesh.position.set(0, 0, 0.26);
 gun.add(flashMesh);
 
-const zTilt = new THREE.Group();
-const zRoot = new THREE.Group();
-const zModel = makeHumanoid(ZOMBIE_COLORS);
-zTilt.add(zModel.root);
-zRoot.add(zTilt);
-scene.add(zRoot);
+// ゾンビ：init は resetGame のたびに戻す初期状態
+function makeZombie(colors, init) {
+  const tilt = new THREE.Group(), root = new THREE.Group(), model = makeHumanoid(colors);
+  tilt.add(model.root); root.add(tilt); scene.add(root);
+  return { model, tilt, root, pose: zeroPose(), target: zeroPose(), shadow: blobShadow(), init };
+}
+// マイク：机の横で倒れている男。鍵を取ると起き上がる
+const mike = makeZombie(ZOMBIE_COLORS, { x: 1.6, z: 0.9, yaw: Math.PI / 2, state: 'dormant', hp: 5 });
+// 職員：犬が破った窓から、あとで這い込んでくる
+const staff = makeZombie(STAFF_COLORS, { x: 0.3, z: -4.2, yaw: 0, state: 'hidden', hp: 4 });
+const zombies = [mike, staff];
+
+const dogModel = makeDog();
+scene.add(dogModel.root);
+const dogPoseCur = dogZero(), dogPoseTarget = dogZero();
+const dogShadow = blobShadow();
+
+// 破れた窓の縁に残るガラス
+const brokenGlass = (() => {
+  const pos = [], tri = (a, b, c) => { for (const q of [a, b, c]) pos.push(q[0], q[1], -3.965); };
+  const X0 = -1, X1 = 1.6, Y0 = 1.0, Y1 = 2.3;
+  for (let x = X0; x < X1 - 0.01; x += 0.2) {
+    tri([x, Y0], [x + 0.2, Y0], [x + 0.05 + rand() * 0.1, Y0 + 0.06 + rand() * 0.3]);
+    tri([x, Y1], [x + 0.06 + rand() * 0.1, Y1 - 0.05 - rand() * 0.25], [x + 0.2, Y1]);
+  }
+  for (let y = Y0; y < Y1 - 0.01; y += 0.2) {
+    tri([X0, y], [X0 + 0.05 + rand() * 0.3, y + 0.05 + rand() * 0.1], [X0, y + 0.2]);
+    tri([X1, y], [X1, y + 0.2], [X1 - 0.05 - rand() * 0.3, y + 0.05 + rand() * 0.1]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 2 ? 1 : 0)), 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Array(pos.length / 3 * 2).fill(0), 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(pos.length).fill(1), 3));
+  const m = new THREE.Mesh(g, ps1Material({ tint: 0x9ab4d0, emissive: 0.5, opacity: 0.7, side: THREE.DoubleSide }));
+  scene.add(m);
+  return m;
+})();
 
 function blobShadow() {
   const b = newBuilder();
@@ -91,19 +127,22 @@ const menu = createMenu(document.getElementById('menu'));
 const itemView = createItemView();
 pModel.root.userData.head = pModel.parts.head;
 const pShadow = blobShadow();
-const zShadow = blobShadow();
 
 // ---------------------------------------------------------------- 状態
 const PLAYER_R = 0.28;
 const QUICK_TIME = 0.4;
-let state, player, zombie, flags, lightningTimer, flicker, flashT, hurtFlash, condT, doorT, endReady, lastTime;
+let state, player, dog, evT, flags, lightningTimer, flicker, flashT, hurtFlash, condT, doorT, endReady, lastTime;
 
 function resetGame() {
   player = { x: -4.4, z: 2.2, yaw: Math.PI * 0.6, phase: 0, speed: 0, turnVel: 0, turnPhase: 0, aiming: false,
     quick: 0, quickFrom: 0, health: 100, ammo: 10, inv: [{ id: 'handgun' }], hurt: 0, held: 0, fireCd: 0, recoil: 0,
     aimW: 0, turnW: 0, limpW: 0, quickW: 0, heldW: 0, deadW: 0, idleT: 0, look: 0, lookTarget: 0, lookT: 0 };
-  zombie = { x: 1.6, z: 0.9, yaw: Math.PI / 2, state: 'dormant', t: 0, hp: 5, phase: 0, groan: 3, stagger: 0 };
-  flags = { key: false, ammo: false, usedKey: false, herb: false };
+  for (const z of zombies) Object.assign(z, { t: 0, phase: 0, groan: 3, stagger: 0, headJerk: 0, bit: false, y: 0 }, z.init);
+  dog = { x: 0.3, y: 1.35, z: -4.3, yaw: 0, state: 'hidden', t: 0, hp: 3, phase: 0, speed: 0, cd: 0, bit: false, growl: 0 };
+  brokenGlass.visible = false;
+  camForce = -1; evT = 0;
+  setRain(1);
+  flags = { key: false, ammo: false, usedKey: false, herb: false, dog: false, staffT: 0 };
   room.objects.key.visible = true;
   room.objects.herb.visible = true;
   fxs.reset();
@@ -234,9 +273,9 @@ function showDoc() {
 function interact() {
   const fx = player.x + Math.sin(player.yaw) * 0.6;
   const fz = player.z + Math.cos(player.yaw) * 0.6;
-  if (Math.hypot(zombie.x - Math.sin(zombie.yaw) * 0.8 - fx, zombie.z - Math.cos(zombie.yaw) * 0.8 - fz) < 0.9
-      && (zombie.state === 'dormant' || zombie.state === 'dead')) {
-    say(zombie.state === 'dormant' ? TEXT.corpse : TEXT.corpseDead);
+  if (Math.hypot(mike.x - Math.sin(mike.yaw) * 0.8 - fx, mike.z - Math.cos(mike.yaw) * 0.8 - fz) < 0.9
+      && (mike.state === 'dormant' || mike.state === 'dead')) {
+    say(mike.state === 'dormant' ? TEXT.corpse : TEXT.corpseDead);
     return;
   }
   let best = null, bestD = Infinity;
@@ -249,7 +288,7 @@ function interact() {
   if (id === 'key' && !flags.key) {
     say([TEXT.keyFound, { ask: '取りますか？', yes: () => {
       flags.key = true; room.objects.key.visible = false; sfx.pickup(); addItem('key');
-      say(TEXT.keyGot, () => { zombie.state = 'rising'; zombie.t = 0; sfx.groan(); });
+      say(TEXT.keyGot, () => { mike.state = 'rising'; mike.t = 0; sfx.groan(); flags.staffT = 5; });
     } }]);
   } else if (id === 'ammo' && !flags.ammo) {
     say([TEXT.ammoFound, { ask: '取りますか？', yes: () => {
@@ -331,7 +370,14 @@ function collide(o, r) {
   }
 }
 
-const zombieActive = () => zombie.state === 'walk' || zombie.state === 'grab' || zombie.state === 'stagger';
+const zombieActive = (z) => z.state === 'walk' || z.state === 'grab' || z.state === 'stagger';
+const dogActive = () => ['land', 'run', 'lunge', 'bite', 'recover', 'stagger'].includes(dog.state);
+// 撃てる・ぶつかる相手の一覧
+function targets() {
+  const list = zombies.filter(zombieActive);
+  if (dogActive()) list.push(dog);
+  return list;
+}
 const angleDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
 // ---------------------------------------------------------------- プレイヤー
@@ -390,7 +436,7 @@ function updatePlayer(dt) {
   p.z += Math.cos(p.yaw) * p.speed * dt;
   const bx = p.x, bz = p.z;
   collide(p, PLAYER_R);
-  if (zombieActive()) pushApart(p, zombie, 0.55);
+  for (const e of targets()) pushApart(p, e, e === dog ? 0.5 : 0.55);
   // 壁に正面からぶつかったら足踏みを止める
   const blocked = Math.hypot(p.x - bx, p.z - bz) / Math.max(1e-4, Math.abs(p.speed) * dt);
   if (blocked > 0.85 && Math.abs(p.speed) > 0.2) p.speed = approach(p.speed, 0, 14 * dt);
@@ -472,21 +518,32 @@ function fire() {
   const gp = new THREE.Vector3();
   gun.getWorldPosition(gp);
   fxs.ejectShell(gp, p.yaw);
-  if (!zombieActive()) return;
-  const dx = zombie.x - p.x, dz = zombie.z - p.z;
-  const dist = Math.hypot(dx, dz);
-  if (dist < 9 && Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw)) < 0.35) {
-    zombie.hp--;
-    sfx.hit();
-    fxs.bloodSpray(new THREE.Vector3(zombie.x - (dx / dist) * 0.1, 1.3, zombie.z - (dz / dist) * 0.1), dx / dist, dz / dist);
-    zombie.headJerk = 1;
-    if (zombie.hp <= 0) {
-      zombie.state = 'dying'; zombie.t = 0;
-    } else {
-      zombie.state = 'stagger'; zombie.stagger = 0.55;
-      zombie.x += (dx / dist) * 0.18; zombie.z += (dz / dist) * 0.18;
-      collide(zombie, 0.3);
-    }
+  // 構えた向きの細い扇形に入っている、いちばん近い相手に当たる
+  let hit = null, hd = 9;
+  for (const e of targets()) {
+    const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz);
+    if (d < hd && Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw)) < (e === dog ? 0.42 : 0.35)) { hit = e; hd = d; }
+  }
+  if (!hit) return;
+  const dx = (hit.x - p.x) / hd, dz = (hit.z - p.z) / hd;
+  hit.hp--;
+  sfx.hit();
+  if (hit === dog) {
+    fxs.bloodSpray(new THREE.Vector3(dog.x - dx * 0.1, 0.55, dog.z - dz * 0.1), dx, dz);
+    sfx.yelp();
+    if (dog.hp <= 0) { dog.state = 'dying'; dog.t = 0; }
+    else { dog.state = 'stagger'; dog.t = 0; dog.x += dx * 0.3; dog.z += dz * 0.3; collide(dog, 0.3); }
+    return;
+  }
+  const z = hit;
+  fxs.bloodSpray(new THREE.Vector3(z.x - dx * 0.1, 1.3, z.z - dz * 0.1), dx, dz);
+  z.headJerk = 1;
+  if (z.hp <= 0) {
+    z.state = 'dying'; z.t = 0;
+  } else {
+    z.state = 'stagger'; z.stagger = 0.55;
+    z.x += dx * 0.18; z.z += dz * 0.18;
+    collide(z, 0.3);
   }
 }
 
@@ -496,15 +553,30 @@ const zPose = zeroPose();
 const LYING = { ...zeroPose(), armLz: 0.5, armRz: -0.9, headRy: 0.6, kneeL: 0.3, legLx: -0.2 };
 const DEAD = { ...zeroPose(), armLz: 0.7, armRz: -0.5, headRy: -0.5, kneeR: 0.5, legRx: -0.3 };
 
-function updateZombie(dt) {
-  const z = zombie;
+function updateZombie(z, dt) {
+  const zTilt = z.tilt, zTarget = z.target, zPose = z.pose;
   const t = performance.now() / 1000;
   z.t += dt;
   zTilt.position.set(0, 0, 0);
   zTilt.rotation.set(0, 0, 0);
   let rate = 10;
 
-  if (z.state === 'dormant') {
+  z.y = 0;
+  if (z.state === 'hidden') {
+    Object.assign(zPose, zeroPose());
+  } else if (z.state === 'climb') {
+    // 窓枠を乗り越えて、床へずり落ちる
+    const k = Math.min(1, z.t / 2.2);
+    z.x = 0.3; z.z = -4.2 + 0.95 * k;
+    z.y = 0.95 * (1 - THREE.MathUtils.smoothstep(k, 0.45, 1));
+    zTilt.rotation.x = 1.0 * Math.sin(Math.PI * Math.min(1, k * 1.1));
+    for (const key of POSE_KEYS) zTarget[key] = 0;
+    zTarget.armLx = -1.6; zTarget.armRx = -1.3; zTarget.elbowL = -0.3;
+    zTarget.legLx = -1.2 * (1 - k); zTarget.legRx = -0.4 * (1 - k); zTarget.kneeL = 1.4 * (1 - k); zTarget.kneeR = 1.0 * (1 - k);
+    zTarget.headRx = 0.4; zTarget.headRz = 0.3;
+    rate = 8;
+    if (k >= 1) { z.state = 'walk'; z.t = 0; }
+  } else if (z.state === 'dormant') {
     zTilt.rotation.x = -Math.PI / 2;
     zTilt.position.y = 0.12;
     Object.assign(zTarget, LYING);
@@ -535,12 +607,13 @@ function updateZombie(dt) {
     const sp = 0.32 + 0.3 * Math.max(0, Math.cos(z.phase));
     z.x += Math.sin(z.yaw) * sp * dt;
     z.z += Math.cos(z.yaw) * sp * dt;
+    for (const o of zombies) if (o !== z && zombieActive(o)) pushApart(z, o, 0.5);
     collide(z, 0.3);
     zombieWalkPose(z, t, zTarget);
     z.groan -= dt;
     if (z.groan <= 0) { sfx.groan(); z.groan = 3 + Math.random() * 3; }
     const dist = Math.hypot(dx, dz);
-    if (dist < 0.75 && Math.abs(d) < 0.7 && player.hurt <= 0 && state === 'play') {
+    if (dist < 0.75 && Math.abs(d) < 0.7 && player.hurt <= 0 && player.held <= 0 && state === 'play') {
       z.state = 'grab'; z.t = 0;
       player.held = 1.1;
       player.yaw = Math.atan2(-dx, -dz);
@@ -598,13 +671,134 @@ function updateZombie(dt) {
     zPose.headRx -= z.headJerk * 0.9; zPose.torsoRx -= z.headJerk * 0.3; zPose.headRz += z.headJerk * 0.3;
     z.headJerk = 0;
   }
-  applyPose(zModel.parts, zPose);
-  zRoot.position.set(z.x, 0, z.z);
-  zRoot.rotation.y = z.yaw;
-  zShadow.visible = !(z.state === 'dormant' || z.state === 'dead');
-  zShadow.position.x = z.x; zShadow.position.z = z.z;
+  applyPose(z.model.parts, zPose);
+  z.root.visible = z.state !== 'hidden';
+  z.root.position.set(z.x, z.y, z.z);
+  z.root.rotation.y = z.yaw;
+  z.shadow.visible = !(z.state === 'dormant' || z.state === 'dead' || z.state === 'hidden' || z.z < -3.9);
+  z.shadow.position.x = z.x; z.shadow.position.z = z.z;
 }
 
+
+// ---------------------------------------------------------------- 感染犬
+const WIN = { x: 0.3, y: 1.35, z: -4.3 };
+
+function updateDog(dt) {
+  const d = dog;
+  const t = performance.now() / 1000;
+  d.t += dt;
+  let kind = 'growl', rate = 12;
+  const dx = player.x - d.x, dz = player.z - d.z;
+  const dist = Math.hypot(dx, dz);
+  const want = Math.atan2(dx, dz);
+  const turn = (r) => { const a = angleDiff(want, d.yaw); d.yaw += Math.max(-r * dt, Math.min(r * dt, a)); return a; };
+
+  if (d.state === 'hidden') {
+    d.y = WIN.y;
+  } else if (d.state === 'crash') {
+    // 窓を突き破って、弧を描いて床に降りる
+    if (d.t < 0) { d.y = WIN.y; }
+    else {
+      if (!d.broke) {
+        d.broke = true;
+        sfx.glass(); sfx.bark();
+        brokenGlass.visible = true;
+        fxs.glassBurst(0.3, 1.65, -3.9, 2.4, 1.1);
+        setRain(2.2);
+      }
+      const k = Math.min(1, d.t / 0.6);
+      d.x = WIN.x - 0.1 * k; d.z = WIN.z + 1.9 * k;
+      d.y = WIN.y * (1 - k) + 0.55 * Math.sin(Math.PI * k);
+      d.yaw = 0;
+      kind = k < 0.8 ? 'lunge' : 'growl';
+      rate = 16;
+      if (k >= 1) { d.state = 'land'; d.t = 0; d.y = 0; sfx.growl(); }
+    }
+  } else if (d.state === 'land') {
+    turn(2.5);
+    if (d.t > 1.1) { d.state = 'run'; d.t = 0; }
+  } else if (d.state === 'run') {
+    const a = turn(3.6);
+    d.cd -= dt;
+    d.speed = approach(d.speed, Math.abs(a) > 1.2 ? 1.6 : 3.3, 6 * dt);
+    d.x += Math.sin(d.yaw) * d.speed * dt;
+    d.z += Math.cos(d.yaw) * d.speed * dt;
+    d.phase += d.speed * dt * 4.2;
+    kind = 'run'; rate = 18;
+    d.growl -= dt;
+    if (d.growl <= 0) { sfx.growl(); d.growl = 2.5 + Math.random() * 2; }
+    if (dist < 2.1 && Math.abs(a) < 0.35 && d.cd <= 0 && state === 'play') { d.state = 'lunge'; d.t = 0; d.bit = false; sfx.bark(); }
+  } else if (d.state === 'lunge') {
+    const k = Math.min(1, d.t / 0.5);
+    const sp = 5.2 * (1 - k * 0.5);
+    d.x += Math.sin(d.yaw) * sp * dt;
+    d.z += Math.cos(d.yaw) * sp * dt;
+    d.y = 0.38 * Math.sin(Math.PI * k);
+    kind = 'lunge'; rate = 20;
+    if (!d.bit && dist < 0.75 && player.hurt <= 0 && player.held <= 0 && state === 'play') {
+      d.bit = true; d.state = 'bite'; d.t = 0; d.y = 0;
+      sfx.bite();
+      player.health -= 18;
+      player.held = 0.7;
+      player.yaw = Math.atan2(-dx, -dz);
+      player.aiming = false; player.quick = 0; player.quickW = 0;
+      hurtFlash = 0.35; condT = 2.5;
+    } else if (k >= 1) { d.state = 'recover'; d.t = 0; d.y = 0; d.cd = 0.6; }
+  } else if (d.state === 'bite') {
+    // 喉元に食らいついて振り回す
+    d.x = player.x - Math.sin(d.yaw) * 0.55; d.z = player.z - Math.cos(d.yaw) * 0.55;
+    kind = 'bite'; rate = 20;
+    if (d.t > 0.7) {
+      d.state = 'recover'; d.t = 0; d.cd = 1.2;
+      player.held = 0; player.hurt = 1.2;
+      if (player.health <= 0) die();
+    }
+  } else if (d.state === 'recover') {
+    turn(3);
+    d.x -= Math.sin(d.yaw) * 0.9 * dt; d.z -= Math.cos(d.yaw) * 0.9 * dt;
+    d.speed = 0;
+    if (d.t > 0.8) { d.state = 'run'; d.t = 0; }
+  } else if (d.state === 'stagger') {
+    kind = 'hit'; rate = 22;
+    if (d.t > 0.45) { d.state = 'run'; d.t = 0; d.speed = 0; d.cd = 0.3; }
+  } else if (d.state === 'dying') {
+    kind = d.t < 0.25 ? 'hit' : 'dead'; rate = d.t < 0.25 ? 20 : 9;
+    d.y = 0;
+    if (d.t > 1.2) { d.state = 'dead'; }
+  } else if (d.state === 'dead') {
+    kind = 'dead';
+  }
+  if (d.state !== 'crash' && d.state !== 'hidden') {
+    if (d.state !== 'bite') for (const z of zombies) if (zombieActive(z)) pushApart(d, z, 0.5);
+    collide(d, 0.3);
+  }
+  dogPose(kind, d.phase, t, dogPoseTarget);
+  if (d.state === 'hidden' || d.state === 'dead') Object.assign(dogPoseCur, dogPoseTarget);
+  dampDog(dogPoseCur, dogPoseTarget, dt, rate);
+  applyDog(dogModel, dogPoseCur);
+  dogModel.root.visible = d.state !== 'hidden' && !(d.state === 'crash' && d.t < 0);
+  dogModel.root.position.set(d.x, d.y, d.z);
+  dogModel.root.rotation.y = d.yaw;
+  dogShadow.visible = dogModel.root.visible && d.state !== 'dead' && d.z > -3.9;
+  dogShadow.position.x = d.x; dogShadow.position.z = d.z;
+  dogShadow.scale.setScalar(1 - Math.min(0.6, d.y));
+}
+
+// 部屋の中の出来事：犬が窓を破る、あとから職員のゾンビが這い込む
+function updateEvents(dt) {
+  if (!flags.dog && player.x > -2.3) {
+    flags.dog = true;
+    state = 'event'; evT = 2.3;
+    camForce = CAMS.findIndex((c) => c.name === 'window');
+    updateCamera(true);
+    lightningTimer = 0.62;
+    dog.state = 'crash'; dog.t = -0.45; dog.broke = false;
+  }
+  if (flags.staffT > 0) {
+    flags.staffT -= dt;
+    if (flags.staffT <= 0) { staff.state = 'climb'; staff.t = 0; sfx.groan(); }
+  }
+}
 
 function die() {
   state = 'dead';
@@ -688,7 +882,11 @@ function update(dt) {
       state = 'menu';
       menu.open(player.inv, player, useItem);
       sfx.cursor();
-    } else updatePlayer(dt);
+    } else { updatePlayer(dt); if (state === 'play') updateEvents(dt); }
+  } else if (state === 'event') {
+    evT -= dt;
+    settlePlayer(dt);
+    if (evT <= 0) { state = 'play'; camForce = -1; updateCamera(true); }
   } else if (state === 'menu') {
     if (menu.update(dt, pressed, sfx)) { menu.close(); state = 'play'; }
     settlePlayer(0);
@@ -712,12 +910,11 @@ function update(dt) {
   }
 
   if (state !== 'door' && state !== 'end') {
-    const frozen = state === 'title' || state === 'intro' || state === 'menu';
-    updateZombie(frozen ? 0 : dt);
+    // 会話中やステータス画面では敵も止まる（原作同様）
+    const frozen = state === 'title' || state === 'intro' || state === 'menu' || state === 'message' || state === 'doc';
+    for (const z of zombies) updateZombie(z, frozen ? 0 : dt);
+    updateDog(frozen ? 0 : dt);
     if (!frozen) fxs.update(dt);
-    if (state === 'message' || state === 'doc') {
-      // 会話中もゾンビは止まる（原作同様）
-    }
     updateLights(dt);
     pModel.root.position.set(player.x, 0, player.z);
     pModel.root.rotation.y = player.yaw;
@@ -769,7 +966,8 @@ function frame(now) {
 const backgrounds = backdrop.bakeRoom(room, CAMS, camera);
 resetGame();
 state = 'title';
-updateZombie(0);
+for (const z of zombies) updateZombie(z, 0);
+updateDog(0);
 updateLights(0);
 updatePlayerPose();
 updateCamera(true);
@@ -787,4 +985,4 @@ function updatePlayerPose() {
 }
 
 // テスト・デバッグ用の窓口
-window.__game = { get state() { return state; }, camName: () => CAMS[camIndex]?.name, lookFrom: (pos, look, fov = 40) => { camLocked = !!pos; if (!pos) return; camera.position.set(...pos); camera.fov = fov; camera.updateProjectionMatrix(); camera.lookAt(...look); }, player: () => player, zombie: () => zombie, press, release, input, setCam: (i) => { camIndex = i; const c = CAMS[i]; camera.position.set(...c.pos); camera.fov = c.fov; camera.updateProjectionMatrix(); camera.lookAt(...c.look); } };
+window.__game = { get state() { return state; }, camName: () => CAMS[camIndex]?.name, lookFrom: (pos, look, fov = 40) => { camLocked = !!pos; if (!pos) return; camera.position.set(...pos); camera.fov = fov; camera.updateProjectionMatrix(); camera.lookAt(...look); }, player: () => player, zombie: () => mike, enemies: () => ({ mike, staff, dog }), flags: () => flags, press, release, input, setCam: (i) => { camIndex = i; const c = CAMS[i]; camera.position.set(...c.pos); camera.fov = c.fov; camera.updateProjectionMatrix(); camera.lookAt(...c.look); } };
