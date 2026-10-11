@@ -87,7 +87,27 @@
   }
   #touch button.on { background: #3a3c44; }
   .btns button { height: 64px; }
-  .btns .wide { grid-column: span 2; }
+  .btns button:nth-child(n+3) { font-size: 13px; }
+  #menu { background: linear-gradient(180deg, #0b1220 0%, #05080e 100%); padding: 3cqw 4cqw; box-sizing: border-box; display: grid; grid-template-rows: auto 1fr auto; gap: 2cqw; font-size: 3.2cqw; }
+  .m-top { display: grid; grid-template-columns: 1.3fr 1fr; gap: 2cqw; }
+  .m-box { border: 0.35cqw solid #34405a; background: rgba(20,30,50,0.6); padding: 1.2cqw 1.8cqw; }
+  .m-label { font-size: 2.3cqw; letter-spacing: 0.25em; color: #8a96b0; }
+  #ecg { width: 100%; height: auto; display: block; margin: 0.6cqw 0; image-rendering: pixelated; background: #040a06; }
+  #m-cond-text { font-size: 4.2cqw; letter-spacing: 0.15em; }
+  #m-cond[data-level="fine"] #m-cond-text { color: #5ef05e; }
+  #m-cond[data-level="caution"] #m-cond-text { color: #e8c840; }
+  #m-cond[data-level="danger"] #m-cond-text { color: #f04030; }
+  .m-gun { font-size: 3.8cqw; margin-top: 1.5cqw; }
+  .m-ammo { color: #9ce08a; margin-top: 1cqw; } .m-ammo b { font-weight: 400; font-size: 5cqw; }
+  .m-items { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 1.2cqw; }
+  .slot { border: 0.3cqw solid #2a3448; background: rgba(16,24,40,0.7); display: flex; align-items: center; justify-content: space-between; padding: 0 1.6cqw; min-height: 6cqw; }
+  .slot.sel { border-color: #c8d4f0; background: rgba(60,80,120,0.55); }
+  .slot b { font-weight: 400; color: #9ce08a; }
+  .slot.empty { opacity: 0.45; }
+  .m-bottom { display: flex; gap: 2cqw; align-items: stretch; min-height: 12cqw; }
+  .m-desc { flex: 1; border: 0.3cqw solid #34405a; padding: 1.2cqw 1.8cqw; white-space: pre-line; line-height: 1.5; font-size: 3cqw; }
+  .m-cmds { display: flex; flex-direction: column; gap: 0.8cqw; border: 0.3cqw solid #34405a; padding: 1.2cqw 2.4cqw; }
+  .m-cmds span { color: #8a96b0; } .m-cmds span.sel { color: #fff; } .m-cmds span.sel::before { content: "▶ "; font-size: 0.8em; }
   [hidden] { display: none !important; }
   @media (prefers-reduced-motion: reduce) { .blink { animation: none; } }
 </style>
@@ -103,6 +123,14 @@
   <div id="msg" class="layer-msg" hidden><div id="msg-text"></div><div id="choice" hidden></div></div>
   <div id="doc" class="layer" hidden>
     <div class="sheet"><h2 id="doc-title"></h2><div id="doc-body"></div><div class="hint">▶ 閉じる</div></div>
+  </div>
+  <div id="menu" class="layer" hidden>
+    <div class="m-top">
+      <div id="m-cond" class="m-box"><div class="m-label">CONDITION</div><canvas id="ecg" width="180" height="56"></canvas><div id="m-cond-text">FINE</div></div>
+      <div class="m-box m-equip"><div class="m-label">EQUIP</div><div class="m-gun">ハンドガン</div><div class="m-ammo"><b id="m-equip-ammo">10</b> / 15</div></div>
+    </div>
+    <div id="m-items" class="m-items"></div>
+    <div class="m-bottom"><div id="m-desc" class="m-desc"></div><div id="m-cmds" class="m-cmds" hidden></div></div>
   </div>
   <div id="hurt" class="layer"></div>
   <div id="fade" class="layer"></div>
@@ -121,7 +149,7 @@
 
 <div class="keys">
   <kbd>↑↓←→</kbd> 移動（ラジコン操作）　<kbd>X</kbd>/<kbd>Shift</kbd> 走る　<kbd>Z</kbd> 調べる・撃つ　<kbd>C</kbd> 構える（押し続け）<br>
-  <kbd>↓</kbd>+<kbd>X</kbd> クイックターン
+  <kbd>↓</kbd>+<kbd>X</kbd> クイックターン　<kbd>I</kbd>/<kbd>Tab</kbd> ステータス画面
 </div>
 
 <div id="touch">
@@ -133,7 +161,8 @@
   <div class="btns">
     <button data-btn="aim">構え</button>
     <button data-btn="run">走る</button>
-    <button data-btn="action" class="wide">調べる／撃つ</button>
+    <button data-btn="action">調べる／撃つ</button>
+    <button data-btn="menu">ステータス</button>
   </div>
 </div>
 

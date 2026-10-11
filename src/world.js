@@ -17,7 +17,7 @@ export function buildRoom() {
 
   const M = {
     wall: hqMat(T.wall, { rough: 0.92 }),
-    floor: hqMat(T.floor, { rough: 0.5 }),
+    floor: hqMat(T.floor, { rough: 0.32 }),
     ceil: hqMat(T.ceiling, { rough: 0.95 }),
     wood: hqMat(T.wood, { rough: 0.55 }),
     woodDark: hqMat(T.woodDark, { rough: 0.5 }),
@@ -69,10 +69,10 @@ export function buildRoom() {
   quad([x0, 0, z1], [1, 0, 0], [0, 0, -1], x1 - x0, z1 - z0, [0, 1, 0], M.floor, 1.2);
   quad([x0, h, z0], [1, 0, 0], [0, 0, 1], x1 - x0, z1 - z0, [0, -1, 0], M.ceil, 1.2);
   const walls = newBuilder();
-  addQuad(walls, [x0, 0, z0], [1, 0, 0], [0, 1, 0], x1 - x0, h, [0, 0, 1], h, 1);
-  addQuad(walls, [x1, 0, z1], [-1, 0, 0], [0, 1, 0], x1 - x0, h, [0, 0, -1], h, 1);
-  addQuad(walls, [x0, 0, z1], [0, 0, -1], [0, 1, 0], z1 - z0, h, [1, 0, 0], h, 1);
-  addQuad(walls, [x1, 0, z0], [0, 0, 1], [0, 1, 0], z1 - z0, h, [-1, 0, 0], h, 1);
+  addQuad(walls, [x0, 0, z0], [1, 0, 0], [0, 1, 0], x1 - x0, h, [0, 0, 1], [6.4, h], 1);
+  addQuad(walls, [x1, 0, z1], [-1, 0, 0], [0, 1, 0], x1 - x0, h, [0, 0, -1], [6.4, h], 1, [1, 1, 1], [0.37, 0]);
+  addQuad(walls, [x0, 0, z1], [0, 0, -1], [0, 1, 0], z1 - z0, h, [1, 0, 0], [6.4, h], 1, [1, 1, 1], [0.61, 0]);
+  addQuad(walls, [x1, 0, z0], [0, 0, 1], [0, 1, 0], z1 - z0, h, [-1, 0, 0], [6.4, h], 1, [1, 1, 1], [0.13, 0]);
   const wallMesh = add(new THREE.Mesh(buildGeometry(walls), M.wall));
   wallMesh.castShadow = false; // 窓の外の月明かりを通すため
 
@@ -237,40 +237,169 @@ export function buildRoom() {
   decal(2.0, -2.4, 0.32, 0.32, M.papers, 1.4, 0.008);
   decal(3.3, 0.3, 0.32, 0.32, M.papers, 0.2, 0.008);
 
+  // ---- 作り込み：汚し・張り紙・小物 ----
+  const X = {
+    cork: hqMat(T.cork, { rough: 0.95 }),
+    hand: hqMat(T.handprint, { rough: 0.3, alpha: true }),
+    bullet: hqMat(T.bullet, { rough: 0.9, alpha: true }),
+    glassBits: hqMat(T.glass, { rough: 0.05, metal: 0.4, alpha: true }),
+    drag: hqMat(T.drag, { rough: 0.25, alpha: true }),
+    exit: new THREE.MeshBasicMaterial({ map: T.exitSign }),
+    binders: hqMat(T.binders, { rough: 0.7 }),
+    ext: hqMat(T.extinguisher, { rough: 0.35, metal: 0.2 }),
+    fuse: hqMat(T.fusebox, { rough: 0.5, metal: 0.4 }),
+    slat: hqMat(null, { rough: 0.5, metal: 0.2, color: 0xb8b4a4 }),
+    cord: hqMat(null, { rough: 0.6, color: 0x1a1a1a }),
+    coat: hqMat(T.leather, { rough: 0.8, color: 0x5a5a5a }),
+  };
+  const wallDecal = (o, u, v, ul, vl, n, mat) => quad(o, u, v, ul, vl, n, mat, [ul, vl], LAYER_BAKE_ONLY).castShadow = false;
+
+  // 西の壁：掲示板とコート掛け
+  quad([-5.98, 1.25, 3.05], [0, 0, -1], [0, 1, 0], 1.1, 0.78, [1, 0, 0], X.cork, [1.1, 0.78]);
+  box([-6, 1.2, 1.9], [-5.95, 2.08, 1.95], M.woodDark, 1); box([-6, 1.2, 3.05], [-5.95, 2.08, 3.1], M.woodDark, 1);
+  cyl(-5.5, 0, 2.3, 0.025, 0.03, 1.75, M.woodDark, 8);
+  cyl(-5.5, 0, 2.3, 0.2, 0.22, 0.03, M.woodDark, 10);
+  box([-5.62, 1.15, 2.2], [-5.38, 1.68, 2.36], X.coat, 0.5);
+  solid(-5.72, 2.08, -5.28, 2.52);
+
+  // 北の壁：電話（受話器が垂れ下がっている）・分電盤・割れたガラス
+  box([-2.42, 1.22, -4], [-2.2, 1.5, -3.94], M.beige, 1);
+  const handset = box([-0.025, -0.11, -0.025], [0.025, 0.11, 0.025], M.beige, 1);
+  handset.position.set(-2.3, 0.62, -3.86); handset.rotation.z = 0.3;
+  const cordM = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.55, 4), X.cord);
+  cordM.position.set(-2.3, 1.0, -3.9); cordM.rotation.z = 0.1; add(cordM);
+  box([5.15, 1.55, -4], [5.6, 2.1, -3.9], X.fuse, [0.45, 0.55]);
+  const glassFloor = (x, z, s, r) => {
+    const b = newBuilder();
+    addQuad(b, [-s / 2, 0, s / 2], [1, 0, 0], [0, 0, -1], s, s, [0, 1, 0], [s, s], 1);
+    const m = new THREE.Mesh(buildGeometry(b), X.glassBits);
+    m.position.set(x, 0.007, z); m.rotation.y = r;
+    add(m, LAYER_BAKE_ONLY).castShadow = false;
+  };
+  glassFloor(0.5, -3.35, 0.9, 0.3); glassFloor(1.1, -3.0, 0.5, 1.2);
+
+  // 窓のブラインド（半分下りていて、1 枚外れている）
+  for (let i = 0; i < 10; i++) {
+    const y = 2.27 - i * 0.055;
+    const slat = box([-0.97, -0.004, -0.03], [1.57, 0.004, 0.03], X.slat, 1);
+    slat.position.set(0, y, -3.9); slat.rotation.x = 0.5;
+    if (i === 7) { slat.rotation.set(0.5, 0, 0.35); slat.position.set(0.15, y - 0.25, -3.88); }
+  }
+  box([-1.0, 2.29, -3.95], [1.6, 2.33, -3.86], X.slat, 1);
+
+  // 書類棚の上のバインダー、机の書類の山とケーブル
+  box([2.45, 1.3, -3.98], [2.95, 1.6, -3.7], X.binders, [0.5, 0.3]);
+  box([-4.5, 0.77, -3.9], [-4.2, 0.9, -3.5], M.paper, 0.3);
+  box([4.2, 0.77, -1.5], [4.5, 0.93, -1.25], M.paper, 0.3);
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.8, 4), X.cord);
+  cable.position.set(3.2, 0.4, -1.57); add(cable);
+
+  // 東の壁：血の手形・弾痕・非常口の誘導灯・消火器
+  wallDecal([5.975, 0.85, 1.05], [0, 0, 1], [0, 1, 0], 0.7, 0.7, [-1, 0, 0], X.hand);
+  wallDecal([5.975, 1.55, -2.6], [0, 0, 1], [0, 1, 0], 0.45, 0.45, [-1, 0, 0], X.bullet);
+  wallDecal([-1.2, 1.45, 3.975], [-1, 0, 0], [0, 1, 0], 0.4, 0.4, [0, 0, -1], X.bullet);
+  const exitSign = box([5.9, 2.42, 2.25], [5.99, 2.62, 2.95], X.exit, [0.7, 0.2]);
+  exitSign.castShadow = false;
+  cyl(5.83, 0.12, 1.45, 0.075, 0.075, 0.45, X.ext, 10);
+  cyl(5.83, 0.57, 1.45, 0.03, 0.04, 0.07, M.black, 6);
+  solid(5.65, 1.3, 6, 1.62);
+
+  // 消えたままの予備の蛍光灯
+  for (const fx of [-4.0, 4.0]) {
+    box([fx - 0.9, 3.1, -0.16], [fx + 0.9, 3.2, 0.16], M.paint, 1);
+    box([fx - 0.8, 3.06, -0.05], [fx + 0.8, 3.1, 0.05], M.glass, 1).castShadow = false;
+  }
+
+  // 床：引きずった血の跡と点々と続く血痕
+  const floorDecal = (x, z, w, d, mat, rot) => {
+    const b = newBuilder();
+    addQuad(b, [-w / 2, 0, d / 2], [1, 0, 0], [0, 0, -1], w, d, [0, 1, 0], [w, d], 1);
+    const m = new THREE.Mesh(buildGeometry(b), mat);
+    m.position.set(x, 0.007, z); m.rotation.y = rot;
+    add(m, LAYER_BAKE_ONLY).castShadow = false;
+  };
+  floorDecal(3.0, 1.3, 3.2, 0.8, X.drag, Math.PI - 0.08);
+  for (let i = 0; i < 6; i++) floorDecal(-0.2 - i * 0.35, 1.4 + i * 0.25, 0.14, 0.14, M.blood, i);
+
   // ---- 実行時に描くもの（PS1 風） ----
   const winMat = ps1Material({ map: textures.window, emissive: 0.6, opacity: 0.35 });
   const win = newBuilder();
   addQuad(win, [-1, 1.0, -3.975], [1, 0, 0], [0, 1, 0], 2.6, 1.3, [0, 0, 1], 1.3, 0.65);
   add(new THREE.Mesh(buildGeometry(win), winMat), LAYER_LIVE);
   const key = add(boxMesh([3.95, 0.77, -1.05], [4.12, 0.8, -0.95], ps1Material({ tint: 0xd8b040, emissive: 0.45 }), 10, 1), LAYER_LIVE);
+  // グリーンハーブの鉢（拾うと消えるので実行時に描く）
+  const herb = new THREE.Group();
+  const potM = ps1Material({ tint: 0x7a4a2a });
+  const leafM = ps1Material({ tint: 0x3a8a2a, emissive: 0.1 });
+  herb.add(boxMesh([-0.12, 0, -0.12], [0.12, 0.22, 0.12], potM, 1, 1));
+  for (let i = 0; i < 5; i++) {
+    const leaf = boxMesh([-0.025, 0, -0.1], [0.025, 0.02, 0.1], leafM, 1, 1);
+    leaf.position.set(0, 0.24, 0); leaf.rotation.set(0.5, i * 1.26, 0, 'YXZ');
+    herb.add(leaf);
+  }
+  herb.position.set(-5.65, 0, -0.85);
+  herb.traverse((m) => m.layers.set(LAYER_LIVE));
+  scene.add(herb);
+  solid(-5.8, -1.0, -5.5, -0.7);
   const ammo = add(boxMesh([3.15, 1.3, -3.78], [3.45, 1.42, -3.58], ps1Material({ tint: 0x7a6a2a, emissive: 0.15 }), 10, 1), LAYER_LIVE);
 
   // ---- 事前レンダリング用の照明 ----
   const fluoro = [];
   for (const fx of [-0.55, 0.55]) {
-    const l = new THREE.PointLight(0xfff2dc, 30, 0, 2);
+    const l = new THREE.PointLight(0xe8f0ff, 16, 0, 2);
     l.position.set(fx, 2.95, 0);
-    l.castShadow = true;
-    l.shadow.mapSize.set(1024, 1024); l.shadow.bias = -0.002; l.shadow.radius = 3;
     scene.add(l); fluoro.push(l);
   }
-  const lamp = new THREE.PointLight(0xff9a4a, 7, 0, 2);
+  const lamp = new THREE.PointLight(0xff9a4a, 5, 0, 2);
   lamp.position.set(-2.95, 1.06, -3.6);
   lamp.castShadow = true; lamp.shadow.mapSize.set(512, 512); lamp.shadow.bias = -0.003;
   scene.add(lamp);
-  const moon = new THREE.SpotLight(0x6f86b8, 110, 0, 0.42, 0.6, 2);
+  const moon = new THREE.SpotLight(0x6f86b8, 60, 0, 0.42, 0.6, 2);
   moon.position.set(0.3, 3.4, -6.5);
   moon.target.position.set(0.6, 0, -1.2);
   moon.castShadow = true; moon.shadow.mapSize.set(1024, 1024); moon.shadow.bias = -0.002;
   scene.add(moon, moon.target);
-  const hemi = new THREE.HemisphereLight(0x8a94a8, 0x2a2018, 0.35);
+  const hemi = new THREE.HemisphereLight(0x8a94a8, 0x2a2018, 0.1);
   scene.add(hemi);
-  const bounce = new THREE.PointLight(0xd8c8a8, 2.5, 0, 2);
+  const bounce = new THREE.PointLight(0xd8c8a8, 1.0, 0, 2);
   bounce.position.set(0, 0.6, 0.5);
   scene.add(bounce);
 
+  // 壁の照明（暖色のブラケットライト）と天井のダウンライトが部屋の主な明かり
+  const live = [
+    { pos: [-2.95, 1.06, -3.6], color: [1.0, 0.6, 0.3], range: 4.5 },
+    { pos: [0.3, 2.0, -3.4], color: [0.25, 0.32, 0.5], range: 6 },
+  ];
+  const extra = [];
+  const sconceGlass = new THREE.MeshBasicMaterial({ color: 0xd8a868 });
+  const sconce = (x, z, nx, nz) => {
+    const px = x + nx * 0.12, pz = z + nz * 0.12;
+    const plate = box([-0.07, -0.1, -0.015], [0.07, 0.1, 0.015], M.brass, 1);
+    plate.position.set(x + nx * 0.015, 2.0, z + nz * 0.015); plate.rotation.y = Math.atan2(nx, nz);
+    const shadeM = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.13, 10, 1, true, -Math.PI / 2, Math.PI), sconceGlass);
+    shadeM.position.set(x + nx * 0.02, 2.02, z + nz * 0.02); shadeM.rotation.y = Math.atan2(nx, nz) + Math.PI;
+    add(shadeM).castShadow = false;
+    const l = new THREE.PointLight(0xffb066, 3.2, 0, 2);
+    l.position.set(px, 1.98, pz);
+    l.castShadow = true; l.shadow.mapSize.set(512, 512); l.shadow.bias = -0.003; l.shadow.radius = 4;
+    scene.add(l); extra.push(l);
+    live.push({ pos: [px, 1.98, pz], color: [1.0, 0.7, 0.4], range: 4.5 });
+  };
+  sconce(2.1, -4, 0, 1); sconce(-3.2, 4, 0, -1); sconce(1.6, 4, 0, -1); sconce(-6, -0.6, 1, 0); sconce(6, 0.3, -1, 0);
+  const downDisc = new THREE.MeshBasicMaterial({ color: 0xfff0d8 });
+  const downlight = (x, z) => {
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.02, 12), downDisc);
+    ring.position.set(x, 3.19, z); add(ring).castShadow = false;
+    const l = new THREE.SpotLight(0xffe2b8, 24, 0, 0.6, 0.85, 2);
+    l.position.set(x, 3.12, z); l.target.position.set(x, 0, z);
+    l.castShadow = true; l.shadow.mapSize.set(512, 512); l.shadow.bias = -0.002;
+    scene.add(l, l.target); extra.push(l);
+    live.push({ pos: [x, 3.0, z], color: [1.0, 0.88, 0.7], range: 5 });
+  };
+  downlight(-0.4, 2.6); downlight(3.7, -1.0); downlight(5.0, 2.6); downlight(-4.6, 1.0);
+
   // ライトはどのレイヤーのカメラからも見えるようにする
-  for (const l of [...fluoro, lamp, moon, hemi, bounce]) { l.layers.enableAll(); l.userData.base = l.intensity; }
+  for (const l of [...fluoro, lamp, moon, hemi, bounce, ...extra]) { l.layers.enableAll(); l.userData.base = l.intensity; }
 
   // 調べられる場所
   const interactables = [
@@ -292,12 +421,14 @@ export function buildRoom() {
     { id: 'chair', x: 4.0, z: 0.4, r: 0.6 },
     { id: 'exitDoor', x: 5.9, z: 2.6, r: 0.9 },
     { id: 'westDoor', x: -5.1, z: 0.8, r: 0.9 },
+    { id: 'herb', x: -5.4, z: -0.85, r: 0.55 },
   ];
 
   return {
     scene, colliders, interactables,
-    objects: { key, ammo, memo, winMat },
+    objects: { key, ammo, memo, winMat, herb },
     bake: { fluoro, tube: M.tube, lamp, moon, hemi, bounce },
+    liveLights: live,
   };
 }
 
@@ -312,9 +443,9 @@ export function buildDoorScene() {
   addBox(b, [-0.75, 2.2, -0.1], [0.75, 2.35, 0.12], 1, 1);
   scene.add(new THREE.Mesh(buildGeometry(b), frameMat));
   const wall = newBuilder();
-  addQuad(wall, [-4, 0, 0.1], [1, 0, 0], [0, 1, 0], 3.25, 3.2, [0, 0, 1], 3.2, 0.8);
-  addQuad(wall, [0.75, 0, 0.1], [1, 0, 0], [0, 1, 0], 3.25, 3.2, [0, 0, 1], 3.2, 0.8, [1, 1, 1], [0.75 / 3.2 + 1.5 / 3.2, 0]);
-  addQuad(wall, [-0.75, 2.35, 0.1], [1, 0, 0], [0, 1, 0], 1.5, 0.85, [0, 0, 1], 3.2, 0.8, [1, 1, 1], [0, 2.35 / 3.2]);
+  addQuad(wall, [-4, 0, 0.1], [1, 0, 0], [0, 1, 0], 3.25, 3.2, [0, 0, 1], [6.4, 3.2], 0.8);
+  addQuad(wall, [0.75, 0, 0.1], [1, 0, 0], [0, 1, 0], 3.25, 3.2, [0, 0, 1], [6.4, 3.2], 0.8, [1, 1, 1], [0.74, 0]);
+  addQuad(wall, [-0.75, 2.35, 0.1], [1, 0, 0], [0, 1, 0], 1.5, 0.85, [0, 0, 1], [6.4, 3.2], 0.8, [1, 1, 1], [0.5, 2.35 / 3.2]);
   scene.add(new THREE.Mesh(buildGeometry(wall), hqMat(T.wall, { rough: 0.9 })));
   const hinge = new THREE.Group();
   hinge.position.set(-0.6, 0, 0);

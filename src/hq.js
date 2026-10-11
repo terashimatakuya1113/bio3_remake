@@ -70,51 +70,62 @@ function grain(u, v, s) {
 export function makeHQTextures() {
   const T = {};
 
-  // 壁：上はくすんだ緑の塗装壁、下は木の腰板と巾木。1 枚で高さ 3.2m
-  T.wall = canvasTex(512, (g, S) => {
-    const rail = Math.round(S * (1 - 1.0 / 3.2));
-    const base = Math.round(S * (1 - 0.12 / 3.2));
-    pixels(g, S, S, (u, v, _, x, y) => {
+  // 壁：上はくすんだ緑の塗装壁、下は木の腰板と巾木。1 枚で幅 6.4m・高さ 3.2m
+  T.wall = canvasTex(1024, (g, W, H) => {
+    const rail = Math.round(H * (1 - 1.0 / 3.2));
+    const base = Math.round(H * (1 - 0.12 / 3.2));
+    pixels(g, W, H, (u, v, _, x, y) => {
       if (y < rail - 6) {
-        const n = fbm(u * 8, v * 8, 8, 5, 1);
+        const n = fbm(u * 16, v * 8, 16, 5, 1);
         const stripe = (x % 24 < 2) ? 0.95 : 1.0;
-        let c = mix([0.36, 0.42, 0.34], [0.46, 0.5, 0.4], n);
-        c = mul(c, stripe);
+        let c = mix([0.34, 0.4, 0.32], [0.47, 0.51, 0.41], n);
+        c = mul(c, stripe * (0.94 + 0.12 * fbm(u * 128, v * 64, 128, 2, 12)));
         // 雨漏りの筋
-        const col = fbm(u * 6, 0.5, 6, 2, 9);
-        const streak = smooth(0.62, 0.8, col) * (1 - v * 1.3) * (0.6 + 0.4 * fbm(u * 40, v * 3, 40, 2, 4));
-        c = mix(c, [0.24, 0.2, 0.12], sat(streak) * 0.7);
+        const col = fbm(u * 12, 0.5, 12, 2, 9);
+        const streak = smooth(0.6, 0.8, col) * (1 - v * 1.3) * (0.6 + 0.4 * fbm(u * 80, v * 3, 80, 2, 4));
+        c = mix(c, [0.22, 0.18, 0.1], sat(streak) * 0.75);
+        // 天井際の水じみ
+        const damp = smooth(0.25, 0.0, v) * smooth(0.45, 0.7, fbm(u * 10, v * 6, 10, 4, 19));
+        c = mix(c, [0.3, 0.27, 0.18], damp * 0.7);
+        // 塗装がはがれて下地の漆喰が見えている
+        const peel = fbm(u * 28, v * 14, 28, 5, 23) * smooth(0.5, 0.75, fbm(u * 4, v * 2, 4, 3, 27));
+        if (peel > 0.6) c = mix([0.62, 0.58, 0.48], [0.5, 0.46, 0.38], fbm(u * 90, v * 45, 90, 2, 29));
+        else if (peel > 0.585) c = mul(c, 0.55);
+        // ひび割れ
+        const crack = Math.abs(fbm(u * 24, v * 12, 24, 4, 31) - 0.5);
+        if (crack < 0.006 && fbm(u * 6, v * 3, 6, 2, 37) > 0.55) c = mul(c, 0.35);
         // 下に行くほど手垢と汚れ
-        const grime = smooth(0.45, 0.66, v) * fbm(u * 16, v * 16, 16, 3, 7);
-        c = mul(c, 1 - grime * 0.35);
-        c = mul(c, 1 - smooth(0.06, 0, v) * 0.4);
+        const grime = smooth(0.45, 0.66, v) * fbm(u * 32, v * 16, 32, 3, 7);
+        c = mul(c, 1 - grime * 0.4);
+        c = mul(c, 1 - smooth(0.06, 0, v) * 0.45);
         return c;
       }
       if (y < rail + 2) {
-        // 腰板の笠木
         const sh = y < rail - 3 ? 1.15 : y > rail ? 0.6 : 0.9;
-        return mul([0.27, 0.17, 0.1], sh * (0.85 + 0.3 * fbm(u * 64, v * 4, 64, 2, 2)));
+        return mul([0.27, 0.17, 0.1], sh * (0.85 + 0.3 * fbm(u * 128, v * 4, 128, 2, 2)));
       }
       if (y < base) {
         const board = Math.floor(x / 64);
         const bx = (x % 64) / 64;
-        let c = mul([0.33, 0.21, 0.12], 0.8 + 0.4 * grain(u * 8, v * 2 + board * 0.37, board));
+        let c = mul([0.33, 0.21, 0.12], 0.8 + 0.4 * grain(u * 16, v * 2 + board * 0.37, board));
         if (bx < 0.03) c = mul(c, 0.45);
         else if (bx < 0.06) c = mul(c, 1.12);
-        c = mul(c, 1 - fbm(u * 20, v * 20, 20, 3, 5) * 0.3);
+        c = mul(c, 1 - fbm(u * 40, v * 20, 40, 3, 5) * 0.35);
+        // 蹴られた傷
+        if (fbm(u * 60, v * 30, 60, 2, 41) > 0.78) c = mix(c, [0.5, 0.38, 0.26], 0.5);
         return c;
       }
       const b = y < base + 2 ? 1.2 : 0.75;
-      return mul([0.13, 0.09, 0.06], b * (0.8 + 0.4 * fbm(u * 32, v * 8, 32, 2, 3)));
+      return mul([0.13, 0.09, 0.06], b * (0.8 + 0.4 * fbm(u * 64, v * 8, 64, 2, 3)));
     });
-  });
+  }, { h: 512 });
 
   // 床：すり減ったリノリウム。1 枚 1.2m で 2×2 タイル
   T.floor = canvasTex(512, (g, S) => {
     pixels(g, S, S, (u, v, _, x, y) => {
       const tx = Math.floor(u * 2), ty = Math.floor(v * 2);
       const checker = (tx + ty) % 2;
-      let c = checker ? [0.5, 0.48, 0.42] : [0.43, 0.42, 0.39];
+      let c = checker ? [0.42, 0.34, 0.26] : [0.33, 0.27, 0.21];
       c = mul(c, 0.94 + 0.12 * hash(tx, ty, 3));
       const speck = fbm(u * 96, v * 96, 96, 2, 11);
       c = mul(c, 0.9 + 0.2 * speck);
@@ -308,6 +319,101 @@ export function makeHQTextures() {
     g.fillStyle = '#d6d0bc'; g.fillRect(4, 4, S - 8, S - 8);
     g.fillStyle = '#77736a';
     for (let y = 12; y < S - 10; y += 5) g.fillRect(10, y, 20 + rnd() * 24, 1.5);
+  }, { repeat: false });
+
+  // 掲示板：コルクに張られた紙
+  T.cork = canvasTex(256, (g, S) => {
+    pixels(g, S, S, (u, v) => mul([0.55, 0.38, 0.22], 0.75 + 0.4 * fbm(u * 64, v * 64, 64, 3, 111)));
+    g.strokeStyle = '#3a2614'; g.lineWidth = 10; g.strokeRect(0, 0, S, S);
+    const sheets = [['#e8e2d0', 20, 24, 70, 90], ['#f0e8a0', 100, 20, 60, 60], ['#e0e0e8', 170, 30, 66, 84], ['#e8e2d0', 40, 130, 80, 100], ['#f4d0c8', 140, 130, 90, 60], ['#e8e2d0', 150, 200, 70, 44]];
+    for (const [col, x, y, w, hh] of sheets) {
+      g.save(); g.translate(x + w / 2, y + hh / 2); g.rotate((rnd() - 0.5) * 0.15);
+      g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(-w / 2 + 3, -hh / 2 + 3, w, hh);
+      g.fillStyle = col; g.fillRect(-w / 2, -hh / 2, w, hh);
+      g.fillStyle = '#555'; for (let ly = -hh / 2 + 10; ly < hh / 2 - 6; ly += 6) g.fillRect(-w / 2 + 6, ly, w * (0.4 + rnd() * 0.45), 1.5);
+      g.fillStyle = '#b02020'; g.beginPath(); g.arc(0, -hh / 2 + 4, 3, 0, 7); g.fill();
+      g.restore();
+    }
+    g.fillStyle = '#222'; g.font = `bold ${S * 0.06}px sans-serif`; g.fillText('配送予定', 46, 156);
+  }, { repeat: false });
+
+  // 壁の血の手形
+  T.handprint = canvasTex(128, (g, S) => {
+    g.clearRect(0, 0, S, S);
+    g.fillStyle = 'rgba(80,6,4,0.9)';
+    const hand = (x, y, r) => {
+      g.save(); g.translate(x, y); g.rotate(r);
+      g.beginPath(); g.ellipse(0, 0, 11, 13, 0, 0, 7); g.fill();
+      for (let f = 0; f < 4; f++) { g.beginPath(); g.ellipse(-8 + f * 5.5, -18 - (f === 1 || f === 2 ? 4 : 0), 2.4, 7, 0, 0, 7); g.fill(); }
+      g.beginPath(); g.ellipse(13, -2, 2.6, 6, -0.8, 0, 7); g.fill();
+      g.restore();
+    };
+    hand(40, 46, -0.2); hand(84, 70, 0.3);
+    for (let i = 0; i < 7; i++) { g.fillRect(30 + rnd() * 70, 56 + rnd() * 30, 2, 20 + rnd() * 40); }
+  }, { repeat: false });
+
+  T.bullet = canvasTex(64, (g, S) => {
+    g.clearRect(0, 0, S, S);
+    for (const [x, y] of [[14, 20], [40, 14], [30, 44], [52, 40]]) {
+      g.fillStyle = 'rgba(200,190,170,0.8)'; g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill();
+      g.fillStyle = 'rgba(10,10,10,0.95)'; g.beginPath(); g.arc(x, y, 2.5, 0, 7); g.fill();
+    }
+  }, { repeat: false });
+
+  T.glass = canvasTex(128, (g, S) => {
+    g.clearRect(0, 0, S, S);
+    for (let i = 0; i < 40; i++) {
+      const x = S / 2 + (rnd() - 0.5) * S * 0.9, y = S / 2 + (rnd() - 0.5) * S * 0.9, r = 2 + rnd() * 6;
+      g.fillStyle = `rgba(${170 + rnd() * 60},${190 + rnd() * 50},${210 + rnd() * 40},0.9)`;
+      g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r * 0.8, y + r * 0.5); g.lineTo(x - r * 0.6, y + r * 0.7); g.fill();
+    }
+  }, { repeat: false });
+
+  // 引きずった血の跡
+  T.drag = canvasTex(256, (g, S) => {
+    pixels(g, S, S / 4 | 0, (u, v) => {
+      const w = 0.35 + 0.25 * fbm(u * 8, 0.5, 8, 3, 121);
+      const d = Math.abs(v - 0.5);
+      const streaks = fbm(u * 2, v * 30, 2, 3, 123);
+      const a = smooth(w * 0.5, w * 0.5 - 0.1, d) * (0.4 + 0.6 * streaks) * smooth(1, 0.6, u);
+      return [0.22, 0.02, 0.02, sat(a * 1.4)];
+    });
+  }, { repeat: false, h: 64 });
+
+  T.exitSign = canvasTex(128, (g, S) => {
+    g.fillStyle = '#1e8a3a'; g.fillRect(0, 0, S, S / 2);
+    g.fillStyle = '#f0fff0'; g.font = `bold ${S * 0.16}px sans-serif`; g.textAlign = 'center';
+    g.fillText('非常口', S * 0.6, S * 0.3);
+    g.fillRect(S * 0.08, S * 0.12, S * 0.1, S * 0.24);
+  }, { repeat: false, h: 64 });
+
+  T.binders = canvasTex(256, (g, S) => {
+    g.fillStyle = '#1a120a'; g.fillRect(0, 0, S, S);
+    const cols = ['#1f3a6a', '#6a1f1f', '#2a2a2a', '#3a5a3a', '#7a6a3a'];
+    let x = 0;
+    while (x < S) {
+      const w = 22 + rnd() * 10;
+      g.fillStyle = cols[Math.floor(rnd() * cols.length)]; g.fillRect(x, 8, w - 2, S - 8);
+      g.fillStyle = '#e8e2d0'; g.fillRect(x + 4, 40, w - 10, 30);
+      g.fillStyle = '#444'; g.fillRect(x + 6, 50, w - 14, 2); g.fillRect(x + 6, 58, w - 16, 2);
+      g.fillStyle = 'rgba(0,0,0,0.6)'; g.beginPath(); g.arc(x + w / 2 - 1, S - 40, 5, 0, 7); g.fill();
+      x += w;
+    }
+  }, { repeat: false });
+
+  T.extinguisher = canvasTex(64, (g, S) => {
+    g.fillStyle = '#a81810'; g.fillRect(0, 0, S, S);
+    g.fillStyle = '#e8e0d0'; g.fillRect(S * 0.3, S * 0.3, S * 0.4, S * 0.35);
+    g.fillStyle = '#222'; g.fillRect(S * 0.34, S * 0.38, S * 0.32, 2); g.fillRect(S * 0.34, S * 0.46, S * 0.25, 2);
+    g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(S * 0.12, 0, 3, S);
+  }, { repeat: false });
+
+  T.fusebox = canvasTex(64, (g, S) => {
+    g.fillStyle = '#8a8a80'; g.fillRect(0, 0, S, S);
+    g.fillStyle = '#5a5a54'; g.fillRect(3, 3, S - 6, S - 6);
+    g.fillStyle = '#d0c020'; g.beginPath(); g.moveTo(S / 2, 12); g.lineTo(S / 2 + 12, 32); g.lineTo(S / 2 - 12, 32); g.fill();
+    g.fillStyle = '#111'; g.font = `bold ${S * 0.25}px sans-serif`; g.textAlign = 'center'; g.fillText('!', S / 2, 30);
+    g.fillStyle = '#ccc'; g.fillRect(S - 14, S / 2 - 3, 6, 6);
   }, { repeat: false });
 
   return T;

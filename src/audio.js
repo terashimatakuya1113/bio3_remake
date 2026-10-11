@@ -15,6 +15,7 @@ export function initAudio() {
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   startRain();
+  startAmbience();
 }
 
 function noise(loop = false) {
@@ -50,6 +51,38 @@ function startRain() {
   g.gain.value = 0.05;
   src.connect(f).connect(g).connect(master);
   src.start();
+}
+
+// 不穏な環境音楽：低い持続音がゆっくり揺れ、ときどき高い音が鳴る
+function startAmbience() {
+  const bus = ctx.createGain();
+  bus.gain.value = 0.0;
+  bus.gain.linearRampToValueAtTime(0.16, ctx.currentTime + 6);
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380; lp.Q.value = 2;
+  bus.connect(lp).connect(master);
+  [[55, 'sawtooth', 0.3], [55.4, 'sawtooth', 0.3], [82.4, 'triangle', 0.25], [116.5, 'sine', 0.12]].forEach(([f, type, v], i) => {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+    const g = ctx.createGain(); g.gain.value = v;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.05 + i * 0.031;
+    const lg = ctx.createGain(); lg.gain.value = v * 0.8;
+    lfo.connect(lg).connect(g.gain);
+    o.connect(g).connect(bus);
+    o.start(); lfo.start();
+  });
+  const sweep = ctx.createOscillator(); sweep.frequency.value = 0.02;
+  const sg = ctx.createGain(); sg.gain.value = 220;
+  sweep.connect(sg).connect(lp.frequency); sweep.start();
+  const ting = () => {
+    const t = ctx.currentTime;
+    const f = [622, 659, 932, 987][Math.floor(Math.random() * 4)];
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 1.007;
+    const g = ctx.createGain(); env(g, t, 0.8, 0.035, 5);
+    o.connect(g); o2.connect(g); g.connect(master);
+    o.start(t); o2.start(t); o.stop(t + 6.5); o2.stop(t + 6.5);
+    setTimeout(ting, 9000 + Math.random() * 12000);
+  };
+  setTimeout(ting, 7000);
 }
 
 let stepFlip = false;
@@ -122,6 +155,19 @@ export const sfx = {
     o.connect(f).connect(g).connect(master);
     o.start(t); wob.start(t); o.stop(t + 2); wob.stop(t + 2);
     burst({ freq: 140, q: 1, type: 'lowpass', peak: 0.7, decay: 0.5, delay: 2.4 });
+  },
+  reload() {
+    burst({ freq: 2600, q: 5, peak: 0.3, decay: 0.05 });
+    burst({ freq: 1800, q: 5, peak: 0.35, decay: 0.06, delay: 0.25 });
+  },
+  heal() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    [523, 659, 784].forEach((f, i) => {
+      const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+      const g = ctx.createGain(); env(g, t + i * 0.12, 0.01, 0.1, 0.4);
+      o.connect(g).connect(master); o.start(t + i * 0.12); o.stop(t + i * 0.12 + 0.5);
+    });
   },
   locked() {
     burst({ freq: 1800, q: 6, peak: 0.25, decay: 0.08 });

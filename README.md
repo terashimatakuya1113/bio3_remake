@@ -19,6 +19,7 @@ python3 -m http.server 8000
 | 調べる・決定・撃つ | Z / Space / Enter | 調べる／撃つ |
 | 構える（押し続け） | C | 構え |
 | クイックターン | ↓ + X | ▼ + 走る |
+| ステータス画面（体調・アイテム） | I / Tab | ステータス |
 
 ## 当時の質感を出すための工夫
 
@@ -40,7 +41,9 @@ python3 -m http.server 8000
 - `src/anim.js` … 歩き・走り・構えなどのアニメーション
 - `src/actors.js` … ローポリ人型モデル
 - `src/main.js` … ゲームループ、カメラ、プレイヤー、ゾンビ、メッセージ
-- `src/audio.js` … WebAudio による効果音
+- `src/fx.js` … 血しぶき・薬莢・血だまりなどの演出
+- `src/menu.js` … ステータス画面（心電図・装備・アイテム欄）
+- `src/audio.js` … WebAudio による効果音と環境音楽
 - `src/text.js` … ゲーム内の文章
 
 Three.js は CDN（jsDelivr）から読み込みます。

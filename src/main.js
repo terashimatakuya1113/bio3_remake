@@ -6,6 +6,8 @@ import { playerPose, zombieWalkPose, strideLength, WALK_SPEED, RUN_SPEED, BACK_S
 import { initAudio, sfx } from './audio.js';
 import { TEXT, MEMO } from './text.js';
 import { createBackdrop } from './bake.js';
+import { createFx } from './fx.js';
+import { createMenu, ITEMS } from './menu.js';
 
 // ---------------------------------------------------------------- 描画の準備
 const canvas = document.getElementById('game');
@@ -27,10 +29,12 @@ const doorCam = new THREE.PerspectiveCamera(50, RES_W / RES_H, 0.05, 30);
 
 // 固定カメラ。上から順に判定し、今のカメラだけ判定を広げてチラつきを防ぐ
 const CAMS = [
-  { name: 'door', pos: [2.6, 1.7, -0.2], look: [5.6, 1.0, 2.6], fov: 56, test: (x, z, m) => x > 4.0 - m && z > 1.2 - m },
-  { name: 'west', pos: [1.0, 2.8, 3.7], look: [-4.8, 0.6, -0.6], fov: 52, test: (x, z, m) => x < -1.5 + m },
-  { name: 'center', pos: [-5.5, 2.9, -3.5], look: [1.2, 0.4, 1.6], fov: 50, test: (x, z, m) => x < 2.2 + m },
-  { name: 'east', pos: [-0.6, 2.8, -3.6], look: [4.6, 0.5, 1.2], fov: 52, test: () => true },
+  { name: 'door', pos: [2.5, 1.45, -0.7], look: [5.7, 1.0, 2.7], fov: 54, test: (x, z, m) => x > 4.0 - m && z > 1.2 - m },
+  { name: 'window', pos: [1.6, 1.55, 1.6], look: [-0.1, 1.05, -4], fov: 56, test: (x, z, m) => x > -1.5 - m && x < 2.2 + m && z < -1.3 + m },
+  { name: 'start', pos: [-1.5, 1.7, 3.7], look: [-4.9, 0.9, 0.0], fov: 52, test: (x, z, m) => x < -2.5 + m && z > 0.4 - m },
+  { name: 'typewriter', pos: [-0.9, 2.1, 0.7], look: [-4.3, 0.8, -3.3], fov: 50, test: (x, z, m) => x < -1.5 + m },
+  { name: 'center', pos: [-2.7, 1.55, -2.5], look: [2.0, 0.7, 2.6], fov: 56, test: (x, z, m) => x < 2.2 + m },
+  { name: 'east', pos: [1.0, 2.2, 2.7], look: [4.7, 0.7, -1.7], fov: 52, test: () => true },
 ];
 let camIndex = -1;
 const fx = { lit: 1, bolt: 0, flash: 0 };
@@ -81,6 +85,8 @@ function blobShadow() {
   scene.add(m);
   return m;
 }
+const fxs = createFx(scene);
+const menu = createMenu(document.getElementById('menu'));
 const pShadow = blobShadow();
 const zShadow = blobShadow();
 
@@ -91,11 +97,14 @@ let state, player, zombie, flags, lightningTimer, flicker, flashT, hurtFlash, co
 
 function resetGame() {
   player = { x: -4.4, z: 2.2, yaw: Math.PI * 0.6, phase: 0, speed: 0, turnVel: 0, turnPhase: 0, aiming: false,
-    quick: 0, quickFrom: 0, health: 100, ammo: 10, hurt: 0, held: 0, fireCd: 0, recoil: 0,
+    quick: 0, quickFrom: 0, health: 100, ammo: 10, inv: [{ id: 'handgun' }], hurt: 0, held: 0, fireCd: 0, recoil: 0,
     aimW: 0, turnW: 0, limpW: 0, quickW: 0, heldW: 0, deadW: 0, idleT: 0, look: 0, lookTarget: 0, lookT: 0 };
   zombie = { x: 1.6, z: 0.9, yaw: Math.PI / 2, state: 'dormant', t: 0, hp: 5, phase: 0, groan: 3, stagger: 0 };
-  flags = { key: false, ammo: false, usedKey: false };
+  flags = { key: false, ammo: false, usedKey: false, herb: false };
   room.objects.key.visible = true;
+  room.objects.herb.visible = true;
+  fxs.reset();
+  menu.close();
   room.objects.ammo.visible = true;
   lightningTimer = 4;
   flicker = { t: 3, off: 0 };
@@ -109,11 +118,11 @@ function resetGame() {
 }
 
 // ---------------------------------------------------------------- 入力
-const input = { up: false, down: false, left: false, right: false, run: false, action: false, aim: false };
+const input = { up: false, down: false, left: false, right: false, run: false, action: false, aim: false, menu: false };
 const pressed = new Set();
 const KEYMAP = {
   ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
-  ShiftLeft: 'run', ShiftRight: 'run', KeyX: 'run', KeyZ: 'action', Space: 'action', Enter: 'action', KeyC: 'aim',
+  ShiftLeft: 'run', ShiftRight: 'run', KeyX: 'run', KeyZ: 'action', Space: 'action', Enter: 'action', KeyC: 'aim', KeyI: 'menu', Tab: 'menu', KeyM: 'menu',
 };
 function press(k) { if (!input[k]) pressed.add(k); input[k] = true; }
 function release(k) { input[k] = false; }
@@ -236,14 +245,22 @@ function interact() {
   const id = best.id;
   if (id === 'key' && !flags.key) {
     say([TEXT.keyFound, { ask: '取りますか？', yes: () => {
-      flags.key = true; room.objects.key.visible = false; sfx.pickup();
+      flags.key = true; room.objects.key.visible = false; sfx.pickup(); addItem('key');
       say(TEXT.keyGot, () => { zombie.state = 'rising'; zombie.t = 0; sfx.groan(); });
     } }]);
   } else if (id === 'ammo' && !flags.ammo) {
     say([TEXT.ammoFound, { ask: '取りますか？', yes: () => {
-      flags.ammo = true; room.objects.ammo.visible = false; player.ammo += 15; sfx.pickup();
+      flags.ammo = true; room.objects.ammo.visible = false; addItem('ammo', 15); sfx.pickup();
       say(TEXT.ammoGot);
     } }]);
+  } else if (id === 'herb' && !flags.herb) {
+    say([TEXT.herbFound, { ask: '取りますか？', yes: () => {
+      if (player.inv.length >= 8) { say(TEXT.full); return; }
+      flags.herb = true; room.objects.herb.visible = false; addItem('herb'); sfx.pickup();
+      say(TEXT.herbGot);
+    } }]);
+  } else if (id === 'herb') {
+    say(TEXT.herbGone);
   } else if (id === 'memo') {
     showDoc();
   } else if (id === 'exitDoor') {
@@ -257,6 +274,34 @@ function interact() {
   } else {
     say(TEXT[id]);
   }
+}
+
+function addItem(id, count = 1) {
+  const have = player.inv.find((it) => it.id === id);
+  if (have && ITEMS[id].stack) have.count += count;
+  else player.inv.push({ id, count });
+}
+
+// ステータス画面で「使う」を選んだとき。戻り値は画面下に出す一言
+function useItem(it) {
+  const p = player;
+  if (it.id === 'ammo') {
+    const need = 15 - p.ammo;
+    if (need <= 0) return 'これ以上は装填できない。';
+    const take = Math.min(need, it.count);
+    p.ammo += take; it.count -= take;
+    if (it.count <= 0) p.inv.splice(p.inv.indexOf(it), 1);
+    sfx.reload();
+    return 'ハンドガンに装填した。';
+  }
+  if (it.id === 'herb') {
+    if (p.health >= 100) return '今は使う必要がない。';
+    p.health = Math.min(100, p.health + 45);
+    p.inv.splice(p.inv.indexOf(it), 1);
+    sfx.heal();
+    return '体力が回復した。';
+  }
+  return 'ここでは使えない。';
 }
 
 function startDoor() {
@@ -409,17 +454,29 @@ function pushApart(a, b, minD) {
 function fire() {
   const p = player;
   p.fireCd = 0.42;
-  if (p.ammo <= 0) { sfx.empty(); return; }
+  if (p.ammo <= 0) {
+    // 予備の弾があれば自動で装填する（原作と同じ）
+    const reserve = p.inv.find((it) => it.id === 'ammo');
+    if (reserve) { useItem(reserve); p.fireCd = 1.0; return; }
+    sfx.empty(); return;
+  }
   p.ammo--;
   p.recoil = 1;
   flashT = 0.06;
+  flashMesh.rotation.z = Math.random() * 3;
+  flashMesh.scale.setScalar(1.2 + Math.random() * 1.2);
   sfx.gun();
+  const gp = new THREE.Vector3();
+  gun.getWorldPosition(gp);
+  fxs.ejectShell(gp, p.yaw);
   if (!zombieActive()) return;
   const dx = zombie.x - p.x, dz = zombie.z - p.z;
   const dist = Math.hypot(dx, dz);
   if (dist < 9 && Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw)) < 0.35) {
     zombie.hp--;
     sfx.hit();
+    fxs.bloodSpray(new THREE.Vector3(zombie.x - (dx / dist) * 0.1, 1.3, zombie.z - (dz / dist) * 0.1), dx / dist, dz / dist);
+    zombie.headJerk = 1;
     if (zombie.hp <= 0) {
       zombie.state = 'dying'; zombie.t = 0;
     } else {
@@ -526,13 +583,18 @@ function updateZombie(dt) {
     zTarget.kneeL += 1.1 * kneel * (1 - k); zTarget.kneeR += 0.9 * kneel * (1 - k);
     zTarget.hipsY = -0.3 * kneel * (1 - k);
     rate = 14;
-    if (k >= 1) z.state = 'dead';
+    if (k >= 1) { z.state = 'dead'; fxs.startPool(z.x - Math.sin(z.yaw) * 0.8, z.z - Math.cos(z.yaw) * 0.8); }
   } else if (z.state === 'dead') {
     zTilt.rotation.x = -Math.PI / 2;
     zTilt.position.y = 0.12;
     Object.assign(zTarget, DEAD);
   }
   dampPose(zPose, zTarget, dt, rate);
+  if (z.headJerk > 0) {
+    // 被弾で頭と上体がのけぞる（目標ポーズには入れず、一瞬だけずらして戻す）
+    zPose.headRx -= z.headJerk * 0.9; zPose.torsoRx -= z.headJerk * 0.3; zPose.headRz += z.headJerk * 0.3;
+    z.headJerk = 0;
+  }
   applyPose(zModel.parts, zPose);
   zRoot.position.set(z.x, 0, z.z);
   zRoot.rotation.y = z.yaw;
@@ -556,13 +618,22 @@ function setLight(i, x, y, z, r, g, b, range) {
 
 function updateLights(dt) {
   // 蛍光灯の明滅
+  // 切れかけの蛍光灯：ふだんは消えていて、ときどき瞬く
   flicker.t -= dt;
-  if (flicker.t <= 0) { flicker.off = 0.05 + Math.random() * 0.12; flicker.t = 1.5 + Math.random() * 5; }
-  let fl = 1;
-  if (flicker.off > 0) { flicker.off -= dt; fl = Math.random() < 0.5 ? 0.15 : 0.6; }
+  if (flicker.t <= 0) { flicker.off = 0.15 + Math.random() * 0.35; flicker.t = 4 + Math.random() * 7; }
+  let fl = 0;
+  if (flicker.off > 0) { flicker.off -= dt; fl = Math.random() < 0.45 ? 0.9 : 0; }
   fx.lit = fl;
-  setLight(0, 0, 2.9, 0, 0.95 * fl, 0.92 * fl, 0.8 * fl, 9.5);
-  setLight(1, -3.0, 1.15, -3.45, 1.0, 0.55, 0.22, 4.2);
+  // キャラクターの頂点ライティングには、近くて明るい背景の照明を 2 つ選んで使う
+  const near = room.liveLights.map((L) => {
+    const d = Math.hypot(L.pos[0] - player.x, L.pos[2] - player.z);
+    return { L, score: 1 / (0.5 + d * d) };
+  }).sort((a, b) => b.score - a.score);
+  for (let i = 0; i < 2; i++) {
+    const L = near[i].L;
+    setLight(i, L.pos[0], L.pos[1], L.pos[2], L.color[0] * 1.3, L.color[1] * 1.3, L.color[2] * 1.3, L.range);
+  }
+  lighting.uAmbient.value.setRGB(0.1 + 0.25 * fl, 0.1 + 0.26 * fl, 0.13 + 0.28 * fl);
 
   // 稲光
   lightningTimer -= dt;
@@ -610,7 +681,14 @@ function update(dt) {
       ui.fade.style.opacity = 0;
     }
   } else if (state === 'play') {
-    updatePlayer(dt);
+    if (pressed.has('menu') && player.held <= 0) {
+      state = 'menu';
+      menu.open(player.inv, player, useItem);
+      sfx.cursor();
+    } else updatePlayer(dt);
+  } else if (state === 'menu') {
+    if (menu.update(dt, pressed, sfx)) { menu.close(); state = 'play'; }
+    settlePlayer(0);
   } else if (state === 'message') {
     updateMessage(dt);
     settlePlayer(dt);
@@ -631,8 +709,9 @@ function update(dt) {
   }
 
   if (state !== 'door' && state !== 'end') {
-    if (state !== 'title' && state !== 'intro') updateZombie(dt);
-    else updateZombie(0);
+    const frozen = state === 'title' || state === 'intro' || state === 'menu';
+    updateZombie(frozen ? 0 : dt);
+    if (!frozen) fxs.update(dt);
     if (state === 'message' || state === 'doc') {
       // 会話中もゾンビは止まる（原作同様）
     }
@@ -700,4 +779,4 @@ function updatePlayerPose() {
 }
 
 // テスト・デバッグ用の窓口
-window.__game = { get state() { return state; }, lookFrom: (pos, look, fov = 40) => { camLocked = !!pos; if (!pos) return; camera.position.set(...pos); camera.fov = fov; camera.updateProjectionMatrix(); camera.lookAt(...look); }, player: () => player, zombie: () => zombie, press, release, input, setCam: (i) => { camIndex = i; const c = CAMS[i]; camera.position.set(...c.pos); camera.fov = c.fov; camera.updateProjectionMatrix(); camera.lookAt(...c.look); } };
+window.__game = { get state() { return state; }, camName: () => CAMS[camIndex]?.name, lookFrom: (pos, look, fov = 40) => { camLocked = !!pos; if (!pos) return; camera.position.set(...pos); camera.fov = fov; camera.updateProjectionMatrix(); camera.lookAt(...look); }, player: () => player, zombie: () => zombie, press, release, input, setCam: (i) => { camIndex = i; const c = CAMS[i]; camera.position.set(...c.pos); camera.fov = c.fov; camera.updateProjectionMatrix(); camera.lookAt(...c.look); } };

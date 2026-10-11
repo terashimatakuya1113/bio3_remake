@@ -140,6 +140,13 @@ function prism(mat, rTop, rBot, len, seg, y0 = 0, sx = 1, sz = 1) {
   return new THREE.Mesh(withColor(g), mat);
 }
 
+// 断面が丸い回転体（筋肉の盛り上がりを輪郭で表す）。pts は [半径, 高さ] の列で上から下へ
+function lathe(mat, pts, seg = 10, sz = 1) {
+  const g = new THREE.LatheGeometry(pts.slice().reverse().map(([r, y]) => new THREE.Vector2(r, y)), seg, -Math.PI, Math.PI * 2);
+  g.scale(1, 1, sz);
+  return new THREE.Mesh(withColor(g), mat);
+}
+
 export function makeHumanoid(c) {
   const tex = makeSkinTextures(c);
   const mat = {};
@@ -150,12 +157,11 @@ export function makeHumanoid(c) {
   const hips = new THREE.Group();
   hips.position.y = HIP_HEIGHT;
   root.add(hips);
-  hips.add(prism(mat.pants, 0.16, 0.15, 0.2, 8, 0.07, 1, 0.7));
+  hips.add(lathe(mat.pants, [[0.15, 0.08], [0.16, 0.05], [0.168, -0.03], [0.14, -0.11], [0.06, -0.14]], 12, 0.72));
 
   const torso = new THREE.Group();
   hips.add(torso);
-  torso.add(prism(mat.torso, 0.165, 0.155, 0.3, 8, 0.3, 1, 0.68));
-  torso.add(prism(mat.torso, 0.2, 0.17, 0.27, 8, 0.57, 1, 0.62));
+  torso.add(lathe(mat.torso, [[0.04, 0.63], [0.11, 0.6], [0.185, 0.565], [0.205, 0.5], [0.2, 0.42], [0.175, 0.32], [0.152, 0.2], [0.155, 0.08], [0.158, -0.02]], 12, 0.64));
   torso.add(prism(mat.boots, 0.168, 0.168, 0.07, 8, 0.04, 1, 0.71)); // ベルト
   if (c.extra) torso.add(part(c.extra, plain));
 
@@ -176,23 +182,26 @@ export function makeHumanoid(c) {
     const shoulder = new THREE.Group();
     shoulder.position.set(side * 0.255, 0.5, 0);
     torso.add(shoulder);
-    shoulder.add(prism(mat.sleeve, 0.068, 0.052, 0.32, 7, 0.04));
+    shoulder.add(lathe(mat.sleeve, [[0.02, 0.07], [0.06, 0.05], [0.07, 0.0], [0.062, -0.12], [0.05, -0.26], [0.044, -0.3]], 9));
     const elbow = new THREE.Group();
     elbow.position.y = -0.27;
     shoulder.add(elbow);
-    elbow.add(prism(c.forearmSleeve ? mat.sleeve : mat.skin, 0.05, 0.038, 0.24, 7, 0.01));
-    elbow.add(part([[[-0.035, -0.32, -0.03], [0.035, -0.225, 0.045], c.skin]], plain));
+    elbow.add(lathe(c.forearmSleeve ? mat.sleeve : mat.skin, [[0.044, 0.02], [0.05, -0.05], [0.044, -0.14], [0.034, -0.23], [0.03, -0.245]], 9));
+    elbow.add(part([
+      [[-0.03, -0.32, -0.022], [0.03, -0.235, 0.035], c.skin],
+      [[side * 0.025, -0.29, 0.01], [side * 0.025 + side * 0.022, -0.245, 0.04].map((v, i) => v), c.skin],
+    ].map(([a, b, col]) => [a.map((v, i) => Math.min(v, b[i])), a.map((v, i) => Math.max(v, b[i])), col]), plain));
     return [shoulder, elbow];
   };
   const leg = (side) => {
     const hip = new THREE.Group();
     hip.position.set(side * 0.09, 0, 0);
     hips.add(hip);
-    hip.add(prism(mat.pants, 0.09, 0.068, 0.46, 8, 0.02));
+    hip.add(lathe(mat.pants, [[0.06, 0.05], [0.094, 0.0], [0.094, -0.12], [0.08, -0.3], [0.068, -0.42], [0.064, -0.46]], 10));
     const knee = new THREE.Group();
     knee.position.y = -0.44;
     hip.add(knee);
-    knee.add(prism(mat.pants, 0.068, 0.054, 0.3, 7, 0.02));
+    knee.add(lathe(mat.pants, [[0.06, 0.03], [0.068, -0.02], [0.066, -0.1], [0.054, -0.22], [0.05, -0.3]], 9));
     knee.add(prism(mat.boots, 0.062, 0.068, 0.16, 7, -0.28));
     knee.add(part([[[-0.065, -0.46, -0.07], [0.065, -0.38, 0.17], c.boots]], plain));
     return [hip, knee];

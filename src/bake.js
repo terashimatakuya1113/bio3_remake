@@ -12,6 +12,8 @@ const fsVert = /* glsl */ `
 
 const downFrag = /* glsl */ `
   uniform sampler2D src;
+  uniform sampler2D aoTex;
+  uniform float aoAmount;
   uniform vec2 outRes;
   uniform float exposure;
   uniform float dither;
@@ -28,7 +30,8 @@ const downFrag = /* glsl */ `
     vec2 px = floor(gl_FragCoord.xy);
     vec3 c = vec3(0.0);
     for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) {
-      c += texture2D(src, (px + (vec2(i, j) + 0.5) / 4.0) / outRes).rgb;
+      vec2 suv = (px + (vec2(i, j) + 0.5) / 4.0) / outRes;
+      c += texture2D(src, suv).rgb * mix(1.0, texture2D(aoTex, suv).r, aoAmount);
     }
     c /= 16.0;
     // 周辺減光
@@ -61,6 +64,46 @@ const bgFrag = /* glsl */ `
   }
 `;
 
+// 画面空間アンビエントオクルージョン：隅や物の接地面を暗くして、当時の CG レンダーらしい陰影を足す
+const ssaoFrag = /* glsl */ `
+  uniform sampler2D tNormal;
+  uniform sampler2D tDepth;
+  uniform mat4 proj;
+  uniform mat4 invProj;
+  uniform vec3 kernel[24];
+  uniform float radius;
+  varying vec2 vUv;
+  vec3 viewPos(vec2 uv) {
+    float d = texture2D(tDepth, uv).x;
+    vec4 p = invProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
+  }
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  void main() {
+    float d = texture2D(tDepth, vUv).x;
+    if (d >= 1.0) { gl_FragColor = vec4(1.0); return; }
+    vec3 P = viewPos(vUv);
+    vec3 N = normalize(texture2D(tNormal, vUv).xyz * 2.0 - 1.0);
+    float a = hash(gl_FragCoord.xy) * 6.2831853;
+    vec3 rnd = vec3(cos(a), sin(a), 0.0);
+    vec3 T = normalize(rnd - N * dot(rnd, N));
+    vec3 B = cross(N, T);
+    mat3 TBN = mat3(T, B, N);
+    float occ = 0.0;
+    for (int i = 0; i < 24; i++) {
+      vec3 sp = P + TBN * kernel[i] * radius;
+      vec4 o = proj * vec4(sp, 1.0);
+      o.xy = o.xy / o.w * 0.5 + 0.5;
+      if (o.x < 0.0 || o.x > 1.0 || o.y < 0.0 || o.y > 1.0) continue;
+      float sz = viewPos(o.xy).z;
+      float range = smoothstep(0.0, 1.0, radius / abs(P.z - sz));
+      occ += (sz >= sp.z + 0.02 ? 1.0 : 0.0) * range;
+    }
+    float ao = 1.0 - occ / 24.0;
+    gl_FragColor = vec4(vec3(pow(ao, 1.6)), 1.0);
+  }
+`;
+
 function fsQuad(material) {
   const scene = new THREE.Scene();
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
@@ -79,10 +122,42 @@ export function createBackdrop(renderer) {
     type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
   });
   const downMat = new THREE.ShaderMaterial({
-    uniforms: { src: { value: hdr.texture }, outRes: { value: new THREE.Vector2(RES_W, RES_H) }, exposure: { value: 1.0 }, dither: { value: 1.0 } },
+    uniforms: { src: { value: hdr.texture }, aoTex: { value: null }, aoAmount: { value: 0 }, outRes: { value: new THREE.Vector2(RES_W, RES_H) }, exposure: { value: 1.0 }, dither: { value: 1.0 } },
     vertexShader: fsVert, fragmentShader: downFrag, depthTest: false, depthWrite: false,
   });
   const downScene = fsQuad(downMat);
+
+  const W = RES_W * SS, H = RES_H * SS;
+  const gbuf = new THREE.WebGLRenderTarget(W, H, { depthTexture: new THREE.DepthTexture(W, H, THREE.UnsignedIntType) });
+  const aoRT = new THREE.WebGLRenderTarget(W, H, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false });
+  const kernel = [];
+  for (let i = 0; i < 24; i++) {
+    const v = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 0.9 + 0.1).normalize();
+    const t = i / 24;
+    v.multiplyScalar((0.1 + 0.9 * t * t) * (0.5 + Math.random() * 0.5));
+    kernel.push(v);
+  }
+  const ssaoMat = new THREE.ShaderMaterial({
+    uniforms: { tNormal: { value: gbuf.texture }, tDepth: { value: gbuf.depthTexture }, proj: { value: new THREE.Matrix4() },
+      invProj: { value: new THREE.Matrix4() }, kernel: { value: kernel }, radius: { value: 0.55 } },
+    vertexShader: fsVert, fragmentShader: ssaoFrag, depthTest: false, depthWrite: false,
+  });
+  const ssaoScene = fsQuad(ssaoMat);
+  const normalMat = new THREE.MeshNormalMaterial();
+
+  function bakeAO(scene, cam) {
+    scene.overrideMaterial = normalMat;
+    renderer.setRenderTarget(gbuf);
+    renderer.setClearColor(0x8080ff, 1);
+    renderer.clear();
+    renderer.render(scene, cam);
+    scene.overrideMaterial = null;
+    ssaoMat.uniforms.proj.value.copy(cam.projectionMatrix);
+    ssaoMat.uniforms.invProj.value.copy(cam.projectionMatrixInverse);
+    renderer.setRenderTarget(aoRT);
+    renderer.render(ssaoScene, fsCam);
+    renderer.setRenderTarget(null);
+  }
 
   const bgMat = new THREE.ShaderMaterial({
     uniforms: { bgOn: { value: null }, bgOff: { value: null }, lit: { value: 1 }, bolt: { value: 0 }, flash: { value: 0 } },
@@ -99,6 +174,8 @@ export function createBackdrop(renderer) {
   function renderHQ(scene, cam, target, exposure = 1, live = false) {
     const src = live ? hdrLive : hdr;
     downMat.uniforms.src.value = src.texture;
+    downMat.uniforms.aoTex.value = aoRT.texture;
+    downMat.uniforms.aoAmount.value = live ? 0 : 0.85;
     renderer.setRenderTarget(src);
     renderer.setClearColor(0x000000, 1);
     renderer.clear();
@@ -131,8 +208,9 @@ export function createBackdrop(renderer) {
       camera.lookAt(...c.look);
       camera.updateMatrixWorld();
       const on = newTarget(), off = newTarget();
-      variant(true); renderHQ(room.scene, camera, on, c.exposure ?? 0.8);
-      variant(false); renderHQ(room.scene, camera, off, c.exposure ?? 0.8);
+      bakeAO(room.scene, camera);
+      variant(true); renderHQ(room.scene, camera, on, c.exposure ?? 1.0);
+      variant(false); renderHQ(room.scene, camera, off, c.exposure ?? 1.0);
       out.push({ on: on.texture, off: off.texture });
     }
     variant(true);
