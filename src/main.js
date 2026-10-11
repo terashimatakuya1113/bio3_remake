@@ -8,6 +8,7 @@ import { TEXT, MEMO } from './text.js';
 import { createBackdrop } from './bake.js';
 import { createFx } from './fx.js';
 import { createMenu, ITEMS } from './menu.js';
+import { createItemView } from './itemview.js';
 
 // ---------------------------------------------------------------- 描画の準備
 const canvas = document.getElementById('game');
@@ -87,6 +88,8 @@ function blobShadow() {
 }
 const fxs = createFx(scene);
 const menu = createMenu(document.getElementById('menu'));
+const itemView = createItemView();
+pModel.root.userData.head = pModel.parts.head;
 const pShadow = blobShadow();
 const zShadow = blobShadow();
 
@@ -743,15 +746,20 @@ function render() {
     doorCam.lookAt(0.05, 1.25, -2);
     renderer.shadowMap.needsUpdate = true;
     backdrop.renderHQ(doorFx.scene, doorCam, null, 0.9, true);
+  } else if (state === 'menu') {
+    const v = menu.view();
+    itemView.render(renderer, lastDt, v.id, v.inspect, pModel.root);
   } else {
     backdrop.renderFrame(scene, camera, backgrounds[camIndex], fx);
   }
 }
 
 let introT = 0;
+let lastDt = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - (lastTime ?? now)) / 1000);
   lastTime = now;
+  lastDt = dt;
   update(dt);
   pressed.clear();
   render();
