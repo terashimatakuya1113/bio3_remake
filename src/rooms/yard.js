@@ -227,7 +227,7 @@ export function build() {
   look('drums', 8.6, 5.6, 0.9);
   look('door:radio', -5, 6.6, 0.9);
   look('guardWindow', -2.6, 6.6, 1.0);
-  look('gate', 5.5, 6.6, 1.6);
+  look('door:gate', 5.5, 6.6, 1.6);
   look('fence', 1.5, 6.7, 1.6);
   look('dumpster', -8.6, 5.1, 1.2);
   look('cab', 4.9, 1.0, 0.8);
@@ -248,6 +248,7 @@ export function build() {
       warehouse: { to: 'warehouse', spawn: [-3, 5.3, Math.PI], kind: 'metal' },
       warehouseSide: { to: 'warehouse', spawn: [5.5, 5.3, Math.PI], kind: 'metal', lock: 'flag:sideOpen', lockedText: ['倉庫の通用口だ。', '内側からかんぬきが掛かっている。'] },
       cold: { to: 'cold', spawn: [-5.1, 0, Math.PI / 2], kind: 'metal', lock: 'card', lockedText: ['冷蔵倉庫の扉だ。', 'カードリーダーの赤いランプが光っている。\nカードキーがないと開かない。'] },
+      gate: { to: 'checkpoint', spawn: [-4, -5.0, 0], kind: 'gate', lock: 'flag:gateOpen', lockedText: ['正門へ続く金網の門だ。', '南京錠がかかっている。'] },
       radio: { to: 'radio', spawn: [-1, -2.1, 0], kind: 'metal', lock: 'radioKey', lockedText: ['守衛室の扉だ。', '鍵がかかっている。\n中から、かすかに無線のノイズが聞こえる。'] },
     },
     objects: { rain },

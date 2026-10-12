@@ -28,7 +28,7 @@ export function build() {
     cardboard: hqMat(T.cardboard, { rough: 0.9 }),
     whiteBox: hqMat(null, { rough: 0.6, color: 0xd8d8d0 }),
     blueBin: hqMat(null, { rough: 0.5, color: 0x2a5a9a }),
-    frost: hqMat(T.frost, { rough: 0.1, alpha: true }),
+    frost: hqMat(T.frost, { rough: 0.1, alpha: true, color: 0x7a8894 }),
     blood: hqMat(T.blood, { rough: 0.2, alpha: true }),
     strip: hqMat(null, { rough: 0.1, metal: 0.1, color: 0x8ab0b8, alpha: false }),
     black: hqMat(null, { rough: 0.6, color: 0x121212 }),

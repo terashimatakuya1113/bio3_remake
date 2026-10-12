@@ -692,8 +692,10 @@ function updateLights(dt) {
   if (env.flicker) {
     flicker.t -= dt;
     if (flicker.t <= 0) { flicker.off = 0.15 + Math.random() * 0.35; flicker.t = 4 + Math.random() * 7; }
-    fl = 0;
-    if (flicker.off > 0) { flicker.off -= dt; fl = Math.random() < 0.45 ? 0.9 : 0; }
+    // 'on' はふだん点いていて、ときどき瞬いて暗くなる
+    const on = env.flicker === 'on';
+    fl = on ? 1 : 0;
+    if (flicker.off > 0) { flicker.off -= dt; fl = Math.random() < 0.45 ? 0.9 : on ? 0.15 : 0; }
   }
   fx.lit = fl;
   // キャラクターの頂点ライティングには、近くて明るい背景の照明を選んで使う

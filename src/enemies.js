@@ -370,7 +370,7 @@ export function makePorter(spec) {
   const p = {
     kind: 'porter', id: spec.id, x: spec.x, z: spec.z, y: 0, yaw: spec.yaw ?? 0, hp: spec.hp ?? 12, maxHp: spec.hp ?? 12,
     state: spec.state ?? 'walk', t: 0, phase: 0, speed: 0, cd: 2, hits: 0, struck: false, headJerk: 0, radius: 0.45, big: true,
-    final: !!spec.final, downTime: spec.downTime ?? 7, onDown: spec.onDown, onDeath: spec.onDeath, onRise: spec.onRise,
+    final: !!spec.final, downTime: spec.downTime ?? 7, onDown: spec.onDown, onDeath: spec.onDeath, onRise: spec.onRise, onLeave: spec.onLeave,
     dropFrom: spec.dropFrom ?? 4, roarT: 0, stepT: 0, leaveTo: spec.leaveTo,
     ...body,
   };
