@@ -143,7 +143,7 @@ function updateZombie(z, dt) {
     if (z.t > 0.45 && !z.bit) {
       z.bit = true;
       sfx.bite();
-      player.health -= 28;
+      player.health -= 20;
       W.hurtFx();
     }
     if (z.t > 1.1) {
@@ -206,11 +206,11 @@ export function makeDogEnemy(spec) {
   W.scene.add(model.root, shadow);
   const d = {
     kind: 'dog', id: spec.id, x: spec.x, y: spec.y ?? 0, z: spec.z, yaw: spec.yaw ?? 0, state: spec.state ?? 'run', t: 0, hp: spec.hp ?? 3,
-    phase: 0, speed: 0, cd: 0.5, bit: false, growl: 1, win: spec.win, onCrash: spec.onCrash, onDeath: spec.onDeath, low: true, radius: 0.3,
+    phase: 0, speed: 0, bit: false, growl: 1, attackT: 0, wanderT: 0, wx: spec.x, wz: spec.z, lungeV: 0, win: spec.win, onCrash: spec.onCrash, onDeath: spec.onDeath, low: true, radius: 0.3,
     model, shadow, poseCur: dogZero(), poseTarget: dogZero(),
   };
   d.root = model.root;
-  d.active = () => ['land', 'run', 'lunge', 'bite', 'recover', 'stagger'].includes(d.state);
+  d.active = () => ['land', 'roam', 'run', 'stalk', 'lunge', 'bite', 'recover', 'stagger'].includes(d.state);
   d.hit = (dx, dz) => {
     W.fxs.bloodSpray(new THREE.Vector3(d.x - dx * 0.1, 0.55, d.z - dz * 0.1), dx, dz);
     sfx.yelp();
@@ -254,23 +254,40 @@ function updateDog(d, dt) {
     if (dist < 3.5 && W.state === 'play') { d.state = 'land'; d.t = 0; sfx.growl(); }
   } else if (d.state === 'land') {
     turn(2.5);
-    if (d.t > 1.1) { d.state = 'run'; d.t = 0; }
-  } else if (d.state === 'run') {
-    const a = turn(3.6);
-    d.cd -= dt;
-    d.speed = approach(d.speed, Math.abs(a) > 1.2 ? 1.6 : 3.3, 6 * dt);
+    if (d.t > 1.1) toRoam(d, 2);
+  } else if (d.state === 'roam' || d.state === 'run') {
+    // 部屋の中をうろつく。間合いを取りつつ、ときどき身構えて飛びかかる
+    if (d.state === 'run') { d.state = 'roam'; d.attackT = 1; pickWander(d); }
+    d.attackT -= dt; d.wanderT -= dt;
+    const wx = d.wx - d.x, wz = d.wz - d.z;
+    if (d.wanderT <= 0 || Math.hypot(wx, wz) < 0.4) pickWander(d);
+    const a = angleDiff(Math.atan2(wx, wz), d.yaw);
+    d.yaw += Math.max(-2.6 * dt, Math.min(2.6 * dt, a));
+    d.speed = approach(d.speed, Math.abs(a) > 1.0 ? 0.6 : 1.5, 4 * dt);
     d.x += Math.sin(d.yaw) * d.speed * dt;
     d.z += Math.cos(d.yaw) * d.speed * dt;
-    d.phase += d.speed * dt * 4.2;
-    kind = 'run'; rate = 18;
+    d.phase += d.speed * dt * 5;
+    kind = d.speed > 0.3 ? 'run' : 'growl'; rate = 14;
     d.growl -= dt;
-    if (d.growl <= 0) { sfx.growl(); d.growl = 2.5 + Math.random() * 2; }
-    if (dist < 2.1 && Math.abs(a) < 0.35 && d.cd <= 0 && W.state === 'play') { d.state = 'lunge'; d.t = 0; d.bit = false; sfx.bark(); }
+    if (d.growl <= 0) { sfx.growl(); d.growl = 3 + Math.random() * 3; }
+    if (d.attackT <= 0 && W.state === 'play') {
+      if (dist < 5) { d.state = 'stalk'; d.t = 0; sfx.growl(); }
+      else { d.attackT = 1; pickWander(d, true); }
+    }
+  } else if (d.state === 'stalk') {
+    // 飛びかかる前のため：こちらを向いて低く身構える
+    turn(5);
+    d.speed = 0;
+    if (d.t > 0.9) {
+      if (dist < 4.3 && W.state === 'play') {
+        d.state = 'lunge'; d.t = 0; d.bit = false; sfx.bark();
+        d.lungeV = Math.min(3.8, Math.max(1.2, dist - 0.2)) / 0.55;
+      } else { d.state = 'roam'; d.attackT = 1.5; pickWander(d, true); }
+    }
   } else if (d.state === 'lunge') {
-    const k = Math.min(1, d.t / 0.5);
-    const sp = 5.2 * (1 - k * 0.5);
-    d.x += Math.sin(d.yaw) * sp * dt;
-    d.z += Math.cos(d.yaw) * sp * dt;
+    const k = Math.min(1, d.t / 0.55);
+    d.x += Math.sin(d.yaw) * d.lungeV * dt;
+    d.z += Math.cos(d.yaw) * d.lungeV * dt;
     d.y = 0.38 * Math.sin(Math.PI * k);
     kind = 'lunge'; rate = 20;
     if (!d.bit && dist < 0.75 && player.hurt <= 0 && player.held <= 0 && W.state === 'play') {
@@ -281,13 +298,13 @@ function updateDog(d, dt) {
       player.yaw = Math.atan2(-dx, -dz);
       player.aiming = false; player.quick = 0; player.quickW = 0;
       W.hurtFx();
-    } else if (k >= 1) { d.state = 'recover'; d.t = 0; d.y = 0; d.cd = 0.6; }
+    } else if (k >= 1) { d.state = 'recover'; d.t = 0; d.y = 0; }
   } else if (d.state === 'bite') {
     // 喉元に食らいついて振り回す
     d.x = player.x - Math.sin(d.yaw) * 0.55; d.z = player.z - Math.cos(d.yaw) * 0.55;
     kind = 'bite'; rate = 20;
     if (d.t > 0.7) {
-      d.state = 'recover'; d.t = 0; d.cd = 1.2;
+      d.state = 'recover'; d.t = 0;
       player.held = 0; player.hurt = 1.2;
       if (player.health <= 0) W.die();
     }
@@ -295,10 +312,10 @@ function updateDog(d, dt) {
     turn(3);
     d.x -= Math.sin(d.yaw) * 0.9 * dt; d.z -= Math.cos(d.yaw) * 0.9 * dt;
     d.speed = 0;
-    if (d.t > 0.8) { d.state = 'run'; d.t = 0; }
+    if (d.t > 0.8) toRoam(d, 3);
   } else if (d.state === 'stagger') {
     kind = 'hit'; rate = 22;
-    if (d.t > 0.45) { d.state = 'run'; d.t = 0; d.speed = 0; d.cd = 0.3; }
+    if (d.t > 0.45) { d.speed = 0; toRoam(d, 2.5); }
   } else if (d.state === 'dying') {
     kind = d.t < 0.25 ? 'hit' : 'dead'; rate = d.t < 0.25 ? 20 : 9;
     d.y = 0;
@@ -320,6 +337,24 @@ function updateDog(d, dt) {
   d.shadow.visible = d.model.root.visible && d.state !== 'dead' && d.state !== 'sleep' && (!d.win || d.z > d.win.z + 0.4);
   d.shadow.position.x = d.x; d.shadow.position.z = d.z;
   d.shadow.scale.setScalar(1 - Math.min(0.6, d.y));
+}
+
+function toRoam(d, wait) {
+  d.state = 'roam'; d.t = 0;
+  d.attackT = wait + Math.random() * 2.5;
+  pickWander(d);
+}
+
+// うろつく先：部屋の中で、主人公から 2〜5m 離れた場所を選ぶ（near なら少し寄る）
+function pickWander(d, near = false) {
+  const { x0, x1, z0, z1 } = W.room.bounds;
+  const player = W.player;
+  for (let i = 0; i < 12; i++) {
+    const x = x0 + 0.8 + Math.random() * (x1 - x0 - 1.6), z = z0 + 0.8 + Math.random() * (z1 - z0 - 1.6);
+    const pd = Math.hypot(x - player.x, z - player.z);
+    if (pd > 2.2 && pd < (near ? 3.8 : 5.5) && Math.hypot(x - d.x, z - d.z) > 1) { d.wx = x; d.wz = z; break; }
+  }
+  d.wanderT = 2 + Math.random() * 2;
 }
 
 // ---------------------------------------------------------------- 追跡者「ポーター」
