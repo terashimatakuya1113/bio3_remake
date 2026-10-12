@@ -244,7 +244,7 @@ export const TEXT = {
   map: {
     none: 'この辺りの地図は持っていない。',
   },
-  radio(S) {
+  radioTab(S) {
     if (S.flags.radioHeard) return '……ザーッ……\n回収課の周波数。今はノイズだけだ。\n救急の周波数には、もう誰もいない。';
     return 'ザーッ…………\nノイズしか聞こえない。';
   },

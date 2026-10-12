@@ -472,7 +472,7 @@ function tabText(tab) {
     return '読んだファイル：\n' + S.files.map((f) => `・${FILES[f].title}`).join('\n');
   }
   if (tab === 'MAP') return S.flags.map ? TEXT.map[room.id] : TEXT.map.none;
-  if (tab === 'RADIO') return TEXT.radio(S);
+  if (tab === 'RADIO') return TEXT.radioTab(S);
   return '';
 }
 
