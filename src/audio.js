@@ -44,6 +44,10 @@ function burst({ freq = 800, q = 1, type = 'bandpass', peak = 0.5, attack = 0.00
 }
 
 let rainGain = null;
+let ambBus = null;
+export function setTension(level) {
+  if (ambBus) ambBus.gain.setTargetAtTime(0.16 * level, ctx.currentTime, 1.5);
+}
 export function setRain(level) {
   if (rainGain) rainGain.gain.setTargetAtTime(0.05 * level, ctx.currentTime, 0.3);
 }
@@ -62,6 +66,7 @@ function startRain() {
 // 不穏な環境音楽：低い持続音がゆっくり揺れ、ときどき高い音が鳴る
 function startAmbience() {
   const bus = ctx.createGain();
+  ambBus = bus;
   bus.gain.value = 0.0;
   bus.gain.linearRampToValueAtTime(0.16, ctx.currentTime + 6);
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380; lp.Q.value = 2;
@@ -217,5 +222,82 @@ export const sfx = {
   locked() {
     burst({ freq: 1800, q: 6, peak: 0.25, decay: 0.08 });
     burst({ freq: 1500, q: 6, peak: 0.25, decay: 0.08, delay: 0.12 });
+  },
+  // 追跡者の咆哮：低いうなりに歪んだ倍音を重ねる
+  porterRoar(vol = 1) {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    [48, 73, 97].forEach((f, i) => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f * 1.3, t); o.frequency.linearRampToValueAtTime(f, t + 1.4);
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 11 + i * 3;
+      const lg = ctx.createGain(); lg.gain.value = f * 0.25;
+      lfo.connect(lg).connect(o.frequency);
+      const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = 700; flt.Q.value = 3;
+      const g = ctx.createGain(); env(g, t, 0.12, 0.5 * vol / (i + 1), 1.6);
+      o.connect(flt).connect(g).connect(master);
+      o.start(t); lfo.start(t); o.stop(t + 1.9); lfo.stop(t + 1.9);
+    });
+    burst({ freq: 500, q: 0.6, peak: 0.35 * vol, attack: 0.1, decay: 1.4 });
+  },
+  heavyStep() {
+    burst({ freq: 90, q: 1, type: 'lowpass', peak: 0.7, decay: 0.18 });
+    burst({ freq: 400, q: 2, peak: 0.12, decay: 0.06 });
+  },
+  heavyLand() {
+    burst({ freq: 70, q: 0.8, type: 'lowpass', peak: 1.0, decay: 0.7 });
+    burst({ freq: 1200, q: 0.5, peak: 0.3, decay: 0.4 });
+  },
+  swing() { burst({ freq: 900, q: 0.7, peak: 0.35, attack: 0.05, decay: 0.15 }); },
+  punch() {
+    burst({ freq: 140, q: 1, type: 'lowpass', peak: 1.0, decay: 0.3 });
+    burst({ freq: 700, q: 1, peak: 0.6, decay: 0.15 });
+  },
+  rifle() {
+    burst({ freq: 1600, q: 0.5, type: 'lowpass', peak: 0.7, decay: 0.2 });
+    burst({ freq: 150, q: 1, type: 'lowpass', peak: 0.7, decay: 0.3 });
+    burst({ freq: 3500, q: 0.7, peak: 0.25, decay: 0.8, delay: 0.04 });
+  },
+  grunt() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(90, t + 0.25);
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 2;
+    const g = ctx.createGain(); env(g, t, 0.01, 0.35, 0.25);
+    o.connect(f).connect(g).connect(master); o.start(t); o.stop(t + 0.35);
+  },
+  // 重い金属の衝撃（棚が倒れる・コンテナが落ちる）
+  crash() {
+    burst({ freq: 60, q: 0.7, type: 'lowpass', peak: 1.0, decay: 1.2 });
+    burst({ freq: 900, q: 0.4, peak: 0.6, decay: 0.8 });
+    for (let i = 0; i < 6; i++) burst({ freq: 1500 + Math.random() * 3000, q: 10, peak: 0.25, decay: 0.3 + Math.random() * 0.5, delay: 0.05 + Math.random() * 0.6 });
+  },
+  // 汽笛：二つの音を重ねた長い音
+  horn() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    [277, 349, 415].forEach((f) => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+      const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = 1200;
+      const g = ctx.createGain(); env(g, t, 0.15, 0.12, 2.2);
+      o.connect(flt).connect(g).connect(master); o.start(t); o.stop(t + 2.6);
+    });
+  },
+  // 無線のノイズ
+  radio(len = 0.6) { burst({ freq: 2200, q: 0.4, peak: 0.25, attack: 0.02, decay: len }); },
+  // モーターのうなり（クレーン・シャッター）
+  motor(len = 2) {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(55, t); o.frequency.linearRampToValueAtTime(80, t + len);
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.3, t + 0.3); g.gain.setValueAtTime(0.3, t + len - 0.3); g.gain.linearRampToValueAtTime(0.0001, t + len);
+    o.connect(f).connect(g).connect(master); o.start(t); o.stop(t + len + 0.1);
+  },
+  glassSmall() { for (let i = 0; i < 5; i++) burst({ freq: 3000 + Math.random() * 4000, q: 12, peak: 0.3, decay: 0.1, delay: Math.random() * 0.3 }); },
+  heartbeat() {
+    burst({ freq: 60, q: 1, type: 'lowpass', peak: 0.6, decay: 0.15 });
+    burst({ freq: 55, q: 1, type: 'lowpass', peak: 0.45, decay: 0.15, delay: 0.22 });
   },
 };

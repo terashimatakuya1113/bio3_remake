@@ -5,7 +5,11 @@ export const ITEMS = {
   handgun: { name: 'ハンドガン', desc: '9mm 口径の自動拳銃。\n装弾数は 15 発。', equip: true },
   ammo: { name: 'ハンドガンの弾', desc: 'ハンドガン用の 9mm 弾。\nハンドガンと組み合わせると装填できる。', stack: true },
   key: { name: '事務所の鍵', desc: '「管理事務所」と書かれた札がついた鍵。\n表の扉の鍵らしい。' },
-  herb: { name: 'グリーンハーブ', desc: 'この地方に自生する薬草。\n体力を回復する。' },
+  herb: { name: '応急パック', desc: '包帯と消毒液、鎮痛剤のセット。\n救急隊の手つきなら、体力をかなり戻せる。' },
+  card: { name: '冷蔵倉庫のカードキー', desc: '「冷蔵倉庫　入室許可」と印字された磁気カード。\n血で汚れている。' },
+  radioKey: { name: '無線室の鍵', desc: '赤い札に「無線室　所長」と書かれた鍵。\nエマから預かった。' },
+  gateKey: { name: '貨物ヤードの鍵', desc: '真鍮の大きな鍵。\n札には「ヤード門　第2」とある。' },
+  photo: { name: 'ダニーの写真', desc: '相棒のダニーと、救急車の前で撮った写真。\n…今は見ないでおこう。' },
 };
 
 const SLOTS = 8;
@@ -15,6 +19,7 @@ const TAB_TEXT = {
   FILE: 'ファイルはまだ一冊もない。',
   RADIO: 'ザーッ…………\nノイズしか聞こえない。',
 };
+let tabText = (t) => TAB_TEXT[t];
 
 // ---- アイテム欄の小さな絵（1 ドット = 画面の 1 ピクセル） ----
 const ICON_W = 34, ICON_H = 26;
@@ -52,14 +57,35 @@ function icon(id) {
     r('#9a2418', 2, 16, 10, 1); r('#9a2418', 2, 22, 10, 1);
     r('#555', 4, 18, 6, 1); r('#555', 4, 20, 5, 1);
   } else if (id === 'herb') {
-    r('#8a4a28', 12, 17, 10, 7);
-    r('#a85c34', 11, 16, 12, 2);
-    r('#5a2e18', 13, 23, 8, 1);
-    const leaf = (x, y, w, h, col) => { g.fillStyle = col; g.beginPath(); g.ellipse(x, y, w, h, 0, 0, Math.PI * 2); g.fill(); };
-    leaf(11, 11, 5, 2.5, '#3a7a26'); leaf(23, 11, 5, 2.5, '#3a7a26');
-    leaf(14, 7, 4, 2.5, '#4a9a30'); leaf(20, 7, 4, 2.5, '#4a9a30');
-    leaf(17, 4, 2.5, 3, '#5aae3a');
-    r('#2e5a1c', 16, 8, 2, 9);
+    r('#6a665c', 6, 9, 23, 14);
+    r('#e8e4d8', 6, 8, 22, 13);
+    r('#c8c4b4', 6, 19, 22, 2);
+    r('#c01810', 15, 10, 4, 9); r('#c01810', 12, 13, 10, 3);
+    r('#3a3a3a', 13, 5, 8, 3); r('#e8e4d8', 15, 6, 4, 2);
+  } else if (id === 'card') {
+    r('#1a1a1c', 5, 8, 25, 15);
+    r('#d8dce0', 5, 7, 24, 15);
+    r('#2a4a8a', 5, 7, 24, 4);
+    r('#111', 5, 17, 24, 2);
+    r('#d8b040', 8, 12, 5, 4);
+    r('#555', 15, 12, 11, 1); r('#555', 15, 14, 8, 1);
+    r('#8a1010', 20, 18, 6, 3); r('#8a1010', 23, 9, 3, 2);
+  } else if (id === 'radioKey' || id === 'gateKey') {
+    const col = id === 'gateKey' ? '#b89a50' : '#a8a8a0', hi = id === 'gateKey' ? '#f0d890' : '#e0e0d8';
+    g.strokeStyle = col; g.lineWidth = 2;
+    g.beginPath(); g.arc(9, 9, 4, 0, 7); g.stroke();
+    r(col, 13, 8, 15, 2);
+    r(col, 21, 10, 2, 3); r(col, 25, 10, 2, 4);
+    r(hi, 14, 8, 13, 1);
+    const tag = id === 'gateKey' ? '#3a5a8a' : '#a02018';
+    r(tag, 3, 15, 11, 8); r('#e8e0d0', 5, 17, 7, 1); r('#e8e0d0', 5, 19, 5, 1);
+  } else if (id === 'photo') {
+    r('#1a1a1a', 7, 6, 21, 17);
+    r('#e8e4d8', 6, 5, 21, 17);
+    r('#3a4a5a', 8, 7, 17, 11);
+    r('#c8a080', 12, 9, 3, 3); r('#c8a080', 19, 9, 3, 3);
+    r('#3a4a66', 11, 12, 5, 6); r('#3a4a66', 18, 12, 5, 6);
+    r('#e8e8e8', 8, 15, 17, 3); r('#c01810', 14, 16, 4, 1);
   }
   return c.toDataURL();
 }
@@ -189,8 +215,9 @@ export function createMenu(root) {
   }
 
   return {
-    open(inventory, p, use) {
+    open(inventory, p, use, tabs) {
       inv = inventory; player = p; onUse = use;
+      if (tabs) tabText = tabs;
       mode = 'items'; cursor = 0; from = -1; say('');
       ecgX = 0; ecgPrev = null;
       for (let x = 0; x < ecg.width; x++) clearCol(x);
@@ -244,7 +271,7 @@ export function createMenu(root) {
         if (pressed.has('action')) {
           sfx.cursor();
           if (TABS[tab] === 'EXIT') return true;
-          say(TAB_TEXT[TABS[tab]]); render();
+          say(tabText(TABS[tab])); render();
         }
         return false;
       }

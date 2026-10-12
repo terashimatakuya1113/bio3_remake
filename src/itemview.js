@@ -82,29 +82,56 @@ function makeKey() {
   return g;
 }
 
+// 応急パック：白い箱に赤十字
 function makeHerb() {
   const g = new THREE.Group();
+  const white = [0.86, 0.85, 0.8], red = [0.75, 0.1, 0.07], dark = [0.2, 0.2, 0.2];
   g.add(boxes([
-    [[-0.13, -0.3, -0.13], [0.13, -0.08, 0.13], [0.58, 0.3, 0.17]],
-    [[-0.15, -0.1, -0.15], [0.15, -0.05, 0.15], [0.62, 0.33, 0.19]],
-    [[-0.12, -0.06, -0.12], [0.12, -0.04, 0.12], [0.2, 0.13, 0.08]],
-    [[-0.012, -0.05, -0.012], [0.012, 0.08, 0.012], [0.25, 0.4, 0.15]],
+    [[-0.26, -0.14, -0.17], [0.26, 0.14, 0.17], white],
+    [[-0.262, 0.06, -0.172], [0.262, 0.075, 0.172], [0.7, 0.7, 0.66]],
+    [[-0.05, -0.1, 0.171], [0.05, 0.1, 0.18], red],
+    [[-0.13, -0.035, 0.171], [0.13, 0.035, 0.18], red],
+    [[-0.08, 0.14, -0.025], [0.08, 0.19, 0.025], dark],
   ]));
-  const leaf = (len, col) => boxes([[[0, -0.01, -0.04], [len, 0.01, 0.04], col]]);
-  for (let i = 0; i < 9; i++) {
-    const l = leaf(0.18 + (i % 3) * 0.04, [0.22 + (i % 2) * 0.06, 0.5 + (i % 3) * 0.06, 0.16]);
-    l.position.set(0, -0.03 + (i % 3) * 0.05, 0);
-    l.rotation.set(0, i * 2.4, 0.35 + (i % 3) * 0.25);
-    g.add(l);
-  }
-  g.position.y = 0.04;
-  g.scale.setScalar(0.85);
+  g.rotation.y = 0.3;
+  return g;
+}
+
+function makeCard() {
+  const g = new THREE.Group();
+  g.add(boxes([
+    [[-0.27, -0.17, -0.008], [0.27, 0.17, 0.008], [0.84, 0.86, 0.88]],
+    [[-0.27, 0.09, -0.01], [0.27, 0.17, 0.01], [0.16, 0.29, 0.54]],
+    [[-0.22, -0.02, 0.008], [-0.1, 0.07, 0.012], [0.82, 0.68, 0.25]],
+    [[-0.27, -0.13, -0.012], [0.27, -0.09, -0.008], [0.06, 0.06, 0.06]],
+    [[0.05, -0.12, 0.008], [0.2, -0.05, 0.012], [0.5, 0.05, 0.04]],
+  ]));
+  g.rotation.x = -0.2;
+  return g;
+}
+
+function makeKey2(tag) {
+  const g = makeKey();
+  g.children[0].material = mat;
+  const t = boxes([[[-0.38, -0.36, -0.012], [-0.14, -0.2, 0.012], tag]]);
+  g.add(t);
+  return g;
+}
+
+function makePhoto() {
+  const g = new THREE.Group();
+  g.add(boxes([
+    [[-0.26, -0.2, -0.004], [0.26, 0.2, 0.004], [0.9, 0.88, 0.82]],
+    [[-0.22, -0.1, 0.004], [0.22, 0.17, 0.007], [0.24, 0.3, 0.38]],
+    [[-0.12, -0.04, 0.007], [-0.04, 0.12, 0.009], [0.23, 0.29, 0.4]],
+    [[0.04, -0.04, 0.007], [0.12, 0.12, 0.009], [0.23, 0.29, 0.4]],
+  ]));
   return g;
 }
 
 export function createItemView() {
   const scene = new THREE.Scene();
-  const models = { handgun: makeHandgun(), ammo: makeAmmo(), key: makeKey(), herb: makeHerb() };
+  const models = { handgun: makeHandgun(), ammo: makeAmmo(), key: makeKey(), herb: makeHerb(), card: makeCard(), radioKey: makeKey2([0.6, 0.12, 0.1]), gateKey: makeKey2([0.2, 0.32, 0.55]), photo: makePhoto() };
   const pivot = new THREE.Group();
   for (const m of Object.values(models)) { m.visible = false; pivot.add(m); }
   scene.add(pivot);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>BIOHAZARD 3 ROOM 01</title>
+<title>LAST SHIPMENT ―最終便―</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
@@ -35,17 +35,33 @@
   #fade { background: var(--void); opacity: 1; pointer-events: none; }
   #hurt { background: var(--blood); opacity: 0; pointer-events: none; mix-blend-mode: screen; }
 
-  #title, #intro, #end, #dead { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2.5cqw; background: var(--void); }
+  #title, #intro, #ending, #dead { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2.5cqw; background: var(--void); }
   #title .eyebrow { font-size: 2.6cqw; letter-spacing: 0.4em; color: var(--dim); }
   #title h1 { margin: 0; font-weight: 400; font-size: 11cqw; letter-spacing: 0.08em; color: var(--ink); text-shadow: 0.5cqw 0.5cqw 0 var(--blood); }
   #title .sub { font-size: 3.2cqw; color: var(--ink); }
   .blink { font-size: 3cqw; color: var(--dim); animation: blink 1.2s steps(2) infinite; margin-top: 4cqw; }
   @keyframes blink { 50% { opacity: 0; } }
   #intro { background: transparent; font-size: 3.6cqw; line-height: 1.9; white-space: pre-line; opacity: 0; pointer-events: none; }
-  #end h2, #dead h2 { margin: 0; font-weight: 400; font-size: 7cqw; letter-spacing: 0.1em; }
+  #dead h2 { margin: 0; font-weight: 400; letter-spacing: 0.1em; color: var(--blood); font-size: 9cqw; }
   #dead { background: transparent; }
-  #dead h2 { color: var(--blood); font-size: 9cqw; }
-  #end p, #dead p { margin: 0; font-size: 3.2cqw; color: var(--dim); }
+  #dead p { margin: 0; font-size: 3.2cqw; color: var(--dim); }
+  #title h1 { font-size: 10cqw; }
+  #title .sub { letter-spacing: 0.3em; }
+  #ending { justify-content: flex-start; padding-top: 9cqw; gap: 1.6cqw; }
+  #ending h2 { margin: 0 0 2cqw; font-weight: 400; font-size: 5.6cqw; letter-spacing: 0.12em; color: var(--ink); text-shadow: 0.4cqw 0.4cqw 0 var(--blood); opacity: 0; }
+  #end-body p { margin: 0 8%; font-size: 3.3cqw; line-height: 1.9; color: var(--ink); transition: none; }
+  #end-foot { margin-top: 3cqw; }
+  #select { display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6%; box-sizing: border-box; background: rgba(60, 0, 0, 0.25); }
+  .sel-box { width: 88%; background: var(--panel); border: 0.4cqw solid #8a2a20; padding: 2.4cqw 3cqw; box-sizing: border-box; }
+  #sel-prompt { font-size: 4.2cqw; color: #f0d0c0; margin-bottom: 1.8cqw; letter-spacing: 0.05em; }
+  #sel-opts { display: flex; justify-content: space-around; gap: 3cqw; font-size: 4cqw; }
+  #sel-opts span { padding-left: 3.6cqw; position: relative; color: var(--dim); }
+  #sel-opts span.sel { color: #fff; }
+  #sel-opts span.sel::before { content: "▶"; position: absolute; left: 0; font-size: 0.75em; top: 0.25em; color: #e04030; }
+  .sel-track { margin-top: 2cqw; height: 1cqw; background: #2a0a08; }
+  #sel-bar { height: 100%; background: #d03020; transform-origin: left; }
+  #chapter { position: absolute; left: 0; right: 0; top: 38%; text-align: center; font-size: 4.6cqw; letter-spacing: 0.3em; color: var(--ink); text-shadow: 0.4cqw 0.4cqw 0 #000; pointer-events: none; animation: chap 4s ease forwards; white-space: pre-line; }
+  @keyframes chap { 0% { opacity: 0; } 20% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
 
   #msg {
     position: absolute; left: 4%; right: 4%; bottom: 4%; min-height: 20%;
@@ -150,15 +166,19 @@
   <div id="menu" class="layer" hidden></div>
   <div id="hurt" class="layer"></div>
   <div id="fade" class="layer"></div>
+  <div id="select" class="layer" hidden>
+    <div class="sel-box"><div id="sel-prompt"></div><div id="sel-opts"></div><div class="sel-track"><div id="sel-bar"></div></div></div>
+  </div>
+  <div id="chapter" hidden></div>
   <div id="intro" class="layer" hidden>1998年10月2日 深夜
-ラクーンシティ郊外
-アンブレラ社 物流センター 管理事務所</div>
-  <div id="end" class="layer" hidden><h2>ROOM 01 CLEAR</h2><p>試作版はここまでです</p><p class="blink">もう一度遊ぶ</p></div>
-  <div id="dead" class="layer" hidden><h2>YOU DIED</h2><p class="blink">もう一度遊ぶ</p></div>
+ヘイロウ・クリーク市郊外
+ヴェスパー製薬 北部物流センター</div>
+  <div id="dead" class="layer" hidden><h2>YOU DIED</h2><p class="blink">▶ CONTINUE（部屋の入口から）</p></div>
+  <div id="ending" class="layer" hidden><h2 id="end-title"></h2><div id="end-body"></div><p id="end-foot" class="blink"></p></div>
   <div id="title" class="layer">
-    <div class="eyebrow">FAN SEQUEL PROTOTYPE</div>
-    <h1>BIOHAZARD 3</h1>
-    <div class="sub">非公式ファン続編　ROOM 01</div>
+    <div class="eyebrow">A SURVIVAL HORROR HOMAGE</div>
+    <h1>LAST SHIPMENT</h1>
+    <div class="sub">―　最　終　便　―</div>
     <div class="blink">PRESS Z / TAP TO START</div>
   </div>
 </div>

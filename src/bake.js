@@ -186,20 +186,15 @@ export function createBackdrop(renderer) {
     renderer.setRenderTarget(null);
   }
 
-  // 各カメラについて「蛍光灯あり／なし」の 2 枚を焼く
+  // 各カメラについて「蛍光灯あり／なし」の 2 枚を焼く（明滅しない部屋は 1 枚だけ）
   function bakeRoom(room, cams, camera) {
-    const B = room.bake;
+    const variant = room.bake?.variant;
     const prevLayers = camera.layers.mask;
     camera.layers.disableAll();
     camera.layers.enable(1); camera.layers.enable(2);
     renderer.shadowMap.needsUpdate = true;
     const out = [];
-    const variant = (on) => {
-      for (const l of B.fluoro) l.intensity = l.userData.base * (on ? 1 : 0.03);
-      B.tube.color.setScalar(on ? 1 : 0.18);
-      B.bounce.intensity = B.bounce.userData.base * (on ? 1 : 0.12);
-      renderer.shadowMap.needsUpdate = true;
-    };
+    const set = (on) => { variant?.(on); renderer.shadowMap.needsUpdate = true; };
     for (const c of cams) {
       camera.position.set(...c.pos);
       camera.fov = c.fov;
@@ -207,13 +202,14 @@ export function createBackdrop(renderer) {
       camera.updateProjectionMatrix();
       camera.lookAt(...c.look);
       camera.updateMatrixWorld();
-      const on = newTarget(), off = newTarget();
+      const on = newTarget();
       bakeAO(room.scene, camera);
-      variant(true); renderHQ(room.scene, camera, on, c.exposure ?? 1.0);
-      variant(false); renderHQ(room.scene, camera, off, c.exposure ?? 1.0);
+      set(true); renderHQ(room.scene, camera, on, c.exposure ?? room.exposure ?? 1.0);
+      let off = on;
+      if (variant) { off = newTarget(); set(false); renderHQ(room.scene, camera, off, c.exposure ?? room.exposure ?? 1.0); }
       out.push({ on: on.texture, off: off.texture });
     }
-    variant(true);
+    set(true);
     camera.layers.mask = prevLayers;
     return out;
   }

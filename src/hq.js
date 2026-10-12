@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 
 // ---- ノイズ（周期つきなので継ぎ目なくタイルできる） ----
-function hash(x, y, s) {
+export function hash(x, y, s) {
   let h = (x * 374761393 + y * 668265263 + s * 1442695041) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
@@ -26,9 +26,9 @@ export function fbm(x, y, p, oct = 4, s = 0) {
 }
 
 let seed = 4242;
-const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+export const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 
-function canvasTex(size, draw, { srgb = true, repeat = true, h = size } = {}) {
+export function canvasTex(size, draw, { srgb = true, repeat = true, h = size } = {}) {
   const c = document.createElement('canvas');
   c.width = size; c.height = h;
   const g = c.getContext('2d');
@@ -41,7 +41,7 @@ function canvasTex(size, draw, { srgb = true, repeat = true, h = size } = {}) {
 }
 
 // 画素ごとに色を決める（u,v は 0..1、戻り値は 0..1 の RGB）
-function pixels(g, w, h, fn) {
+export function pixels(g, w, h, fn) {
   const img = g.getImageData(0, 0, w, h);
   const d = img.data;
   for (let y = 0; y < h; y++) {
@@ -54,12 +54,12 @@ function pixels(g, w, h, fn) {
   }
   g.putImageData(img, 0, 0);
 }
-const mul = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
-const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-const sat = (v) => Math.min(1, Math.max(0, v));
-const smooth = (e0, e1, x) => { const t = sat((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
+export const mul = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
+export const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+export const sat = (v) => Math.min(1, Math.max(0, v));
+export const smooth = (e0, e1, x) => { const t = sat((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
 
-function grain(u, v, s) {
+export function grain(u, v, s) {
   // 木目：ゆがめた縞
   const warp = fbm(u * 4, v * 1, 4, 3, s) * 9;
   const ring = Math.sin((v * 34 + warp) * Math.PI);
@@ -269,7 +269,7 @@ export function makeHQTextures() {
     g.fillText('整理・整頓', S / 2, S * 0.62);
     g.fillText('無断外出禁止', S / 2, S * 0.74);
     g.font = `${S * 0.05}px sans-serif`; g.fillStyle = '#555';
-    g.fillText('UMBRELLA LOGISTICS', S / 2, S * 0.92);
+    g.fillText('VESPER LOGISTICS', S / 2, S * 0.92);
     pixels(g, S, S, (u, v, c) => mix(c, mul(c, 0.6), smooth(0.55, 0.8, fbm(u * 6, v * 6, 6, 4, 91)) * 0.6));
   }, { repeat: false });
 
