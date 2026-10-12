@@ -415,7 +415,17 @@ function updatePlayer(dt) {
     p.quickW = k;
     if (p.quick === 0) p.quickW = 0;
   } else if (p.aiming) {
-    targetTurn = turnDir * 1.7;
+    // オートエイム：構えた瞬間にいちばん近い敵へ向き直り、構えている間は追い続ける
+    // 左右を入れたらその構えの間は手動に切り替える
+    if (turnDir !== 0) { p.manual = true; p.lock = null; }
+    if (!p.manual && (!p.wasAiming || !p.lock || !targets().includes(p.lock))) p.lock = pickTarget(p);
+    if (p.lock) {
+      const a = angleDiff(Math.atan2(p.lock.x - p.x, p.lock.z - p.z), p.yaw);
+      p.yaw += Math.max(-9 * dt, Math.min(9 * dt, a));
+      p.turnVel = 0;
+    } else targetTurn = turnDir * 1.7;
+    const down = p.lock === dog ? Math.min(1, 1.6 / Math.max(0.8, Math.hypot(dog.x - p.x, dog.z - p.z))) : 0;
+    p.aimDown = smooth(p.aimDown || 0, down, 10, dt);
     if (pressed.has('action') && p.fireCd <= 0) fire();
   } else {
     if (input.down && pressed.has('run')) { p.quick = QUICK_TIME; p.quickFrom = p.yaw; p.speed = 0; sfx.step(true); }
@@ -453,6 +463,8 @@ function updatePlayer(dt) {
   if (p.turnW > 0.05) p.turnPhase += Math.abs(p.turnVel) * dt * 2.6;
   if (turningInPlace && Math.floor(prevT / Math.PI) !== Math.floor(p.turnPhase / Math.PI)) sfx.step(false);
 
+  if (!p.aiming) { p.lock = null; p.manual = false; }
+  p.wasAiming = p.aiming;
   p.aimW = smooth(p.aimW, p.aiming ? 1 : 0, 16, dt);
   p.limpW = smooth(p.limpW, p.health < 33 ? 1 : 0, 3, dt);
 
@@ -493,6 +505,19 @@ function animatePlayer(dt, t) {
   flashMesh.visible = flashT > 0;
 }
 
+
+// 正面寄りで近い敵を選ぶ（真横・背後の敵は向きのずれぶん遠い扱い）
+function pickTarget(p) {
+  let best = null, bestScore = Infinity;
+  for (const e of targets()) {
+    const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz);
+    const a = Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw));
+    if (d > 10 || a > 2.0) continue;
+    const score = d + a * 1.2;
+    if (score < bestScore) { best = e; bestScore = score; }
+  }
+  return best;
+}
 
 function pushApart(a, b, minD) {
   const dx = a.x - b.x, dz = a.z - b.z;

@@ -109,6 +109,9 @@ export function playerPose(p, t, o) {
   if (p.aimW > 0) {
     const w = p.aimW;
     for (const k in AIM_UPPER) o[k] = lerp(o[k], AIM_UPPER[k], w);
+    // 犬のような低い相手には銃口を下げる
+    const down = (p.aimDown || 0) * w;
+    o.armRx += 0.55 * down; o.armLx += 0.55 * down; o.torsoRx += 0.12 * down; o.headRx += 0.3 * down;
     o.armRx -= p.recoil * 0.35 * w;
     o.elbowR -= p.recoil * 0.15 * w;
     o.torsoRx -= p.recoil * 0.05 * w;
