@@ -450,6 +450,13 @@ function updatePorter(p, dt) {
     roarPose();
     if (p.t < 0.05 && !p.roared) { p.roared = true; sfx.porterRoar(1); }
     if (p.t > 1.6) { p.state = 'walk'; p.t = 0; p.roared = false; p.cd = 1.5; }
+  } else if (p.state === 'goto') {
+    // 台本で決めた場所まで大股で歩き、着いたら立ち止まる
+    const g = p.dest;
+    const a = angleDiff(Math.atan2(g[0] - p.x, g[1] - p.z), p.yaw);
+    p.yaw += Math.max(-2.6 * dt, Math.min(2.6 * dt, a));
+    step(1.7); stride(1.7);
+    if (Math.hypot(g[0] - p.x, g[1] - p.z) < 0.35 || p.t > 6) { p.state = 'idleScript'; p.t = 0; const f = p.onArrive; p.onArrive = null; f?.(p); }
   } else if (p.state === 'idleScript') {
     // 台本で動かすときの立ち姿
     stride(0);
@@ -545,7 +552,7 @@ function updatePorter(p, dt) {
     p.tilt.rotation.x = Math.PI / 2; p.tilt.position.y = 0.05;
     o.armLx = -2.6; o.armRx = -2.2; o.armLz = 0.4; o.headRx = -0.3;
   }
-  if (['walk', 'charge', 'punch', 'stagger', 'leave'].includes(p.state)) {
+  if (['walk', 'charge', 'punch', 'stagger', 'leave', 'goto'].includes(p.state)) {
     for (const e of W.enemies) if (e !== p && e.active()) pushApart(e, p, 0.7);
     collide(p, p.radius);
     // プレイヤーを押しのける
@@ -614,6 +621,12 @@ function updateSoldier(s, dt) {
 
   if (s.state === 'hidden') {
     for (const k of POSE_KEYS) o[k] = 0;
+  } else if (s.state === 'aimStill') {
+    // 台本用：撃たずに銃を向けたまま立つ
+    if (s.faceTo != null) { const a = angleDiff(s.faceTo, s.yaw); s.yaw += Math.max(-3 * dt, Math.min(3 * dt, a)); }
+    s.aimW = Math.min(1, s.aimW + dt * 4);
+    fake.aimW = s.aimW;
+    playerPose(fake, t, o);
   } else if (s.state === 'guard' || s.state === 'still') {
     s.aimW = Math.max(0, s.aimW - dt * 3);
     playerPose(fake, t, o);

@@ -1,4 +1,4 @@
-// 感染犬（ケルベロス）：箱で組んだ四つ足のモデルと、走り・飛びかかりなどのポーズ
+// 感染犬：箱で組んだ四つ足のモデルと、走り・飛びかかりなどのポーズ
 import * as THREE from 'three';
 import { addBox, buildGeometry, makeTexture, newBuilder, ps1Material } from './ps1.js';
 

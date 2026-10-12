@@ -13,6 +13,8 @@ const CAMS = [
   { name: 'crane', pos: [-8.8, 3.2, -1.2], look: [3.0, 1.4, 3.4], fov: 58, test: (x, z, m) => x < 3.6 + m },
   { name: 'train', pos: [3.0, 3.8, 2.2], look: [11.0, 0.5, -1.4], fov: 62, test: () => true },
   { name: 'drop', pos: [-5.0, 1.6, 0.6], look: [1.6, 2.6, 2.8], fov: 60, test: () => false },
+  { name: 'intro', pos: [-5.0, 1.7, -1.0], look: [1.6, 1.3, -1.3], fov: 42, test: () => false },
+  { name: 'deal', pos: [-3.8, 1.7, 3.2], look: [-0.8, 1.1, 0.6], fov: 52, test: () => false },
 ]
 
 export function build() {

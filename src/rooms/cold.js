@@ -44,8 +44,6 @@ export function build() {
   walls(M.panel, H, 4);
   ceiling(M.ceil, H, 2);
   // 床の霜と、排水溝
-  decal(-0.5, -2.5, 4.5, 2.5, M.frost, 0.3, 0.007);
-  decal(3.5, 3.0, 3.0, 2.0, M.frost, 1.8, 0.007);
   box([-6, 0, -0.5], [6, 0.01, -0.35], M.dark, 1);
   // 天井の冷却ダクトと配管
   box([-5.5, H - 0.5, -3.2], [5.5, H - 0.1, -2.6], M.steel, 1);
@@ -163,7 +161,7 @@ export function build() {
     objects: { freezerDoor, handle, chain, spill },
     pickups: [
       { id: 'cold.medkit', item: 'herb', mesh: medkit, at: 'shelfMed', found: '棚に、応急パックが置いてある。' },
-      { id: 'cold.ammo', item: 'ammo', count: 10, mesh: ammo, at: 'ammoCrate', found: '木箱の上に、ハンドガンの弾がある。' },
+      { id: 'cold.ammo', item: 'ammo', count: 15, mesh: ammo, at: 'ammoCrate', found: '木箱の上に、ハンドガンの弾がある。' },
     ],
     doors: {
       yard: { to: 'yard', spawn: [9.0, -2, -Math.PI / 2], kind: 'metal' },

@@ -426,7 +426,8 @@ function tryDoor(name) {
   const unlockedFlag = `unlocked.${room.id}.${name}`;
   if (door.lock && !S.flags[unlockedFlag]) {
     if (door.lock.startsWith('flag:')) {
-      sfx.locked(); say(door.lockedText || TEXT.common.locked); return;
+      if (!S.flags[door.lock.slice(5)]) { sfx.locked(); say(door.lockedText || TEXT.common.locked); return; }
+      startDoor(door); return;
     }
     if (!G.has(door.lock)) { sfx.locked(); say(door.lockedText || TEXT.common.locked); return; }
     S.flags[unlockedFlag] = true;
