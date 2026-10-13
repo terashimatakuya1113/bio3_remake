@@ -29,22 +29,27 @@ export function frameScore(c, x, z) {
   return Math.max(sx, sy) + close;
 }
 
+// 足元が少し切れる程度（1.1 まで）は許す
+const OK = 1.1;
+
 export function pickCam(cams, x, z, cur) {
   const score = (i) => frameScore(cams[i], x, z);
   let pref = cams.length - 1;
   for (let i = 0; i < cams.length; i++) if (!cams[i].event && cams[i].test(x, z, 0)) { pref = i; break; }
-  const curOk = cur >= 0 && !cams[cur].event && score(cur) < 1;
+  const curOk = cur >= 0 && !cams[cur].event && score(cur) < OK;
   if (curOk) {
     // いまのカメラの範囲に（少し余裕をもって）まだいれば、そのまま
     if (cams[cur].test(x, z, 0.35)) return cur;
     // 範囲を出ても、次のカメラで余裕をもって映るようになるまでは切り替えない
-    return score(pref) < 0.75 ? pref : cur;
+    return score(pref) < 0.8 ? pref : cur;
   }
-  if (score(pref) < 1) return pref;
-  // 決めた範囲のカメラでは映らない：一番よく映るカメラへ
-  let best = pref, bs = Infinity;
+  if (score(pref) < OK) return pref;
+  // 決めた範囲のカメラでは映らない：近くの範囲のカメラ（棚や壁の裏を映さないように）か、
+  // 範囲を決めていない補助のカメラから、一番よく映るものを選ぶ
+  let best = pref, bs = score(pref);
   for (let i = 0; i < cams.length; i++) {
-    if (cams[i].event) continue;
+    const c = cams[i];
+    if (c.event || !(c.assist || c.test(x, z, 2.0))) continue;
     const s = score(i);
     if (s < bs) { bs = s; best = i; }
   }
