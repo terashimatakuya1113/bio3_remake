@@ -9,12 +9,12 @@ const B = { x0: -10, x1: 12, z0: -6, z1: 6 };
 export const CRANE = { x: 1.6, z: 2.6 };
 
 const CAMS = [
-  { name: 'entry', pos: [-2.6, 4.0, -1.4], look: [-9.6, 0.4, 2.6], fov: 60, test: (x, z, m) => x < -4.5 + m },
+  { name: 'entry', pos: [-2.6, 4.0, -1.4], look: [-9.6, 0.2, 2.6], fov: 66, test: (x, z, m) => x < -4.5 + m },
   { name: 'crane', pos: [-8.8, 3.2, -1.2], look: [3.0, 1.4, 3.4], fov: 58, test: (x, z, m) => x < 3.6 + m },
   { name: 'train', pos: [3.0, 3.8, 2.2], look: [11.0, 0.5, -1.4], fov: 62, test: () => true },
-  { name: 'drop', pos: [-5.0, 1.6, 0.6], look: [1.6, 2.6, 2.8], fov: 60, test: () => false },
-  { name: 'intro', pos: [-5.0, 1.7, -1.0], look: [1.6, 1.3, -1.3], fov: 42, test: () => false },
-  { name: 'deal', pos: [-3.8, 1.7, 3.2], look: [-0.8, 1.1, 0.6], fov: 52, test: () => false },
+  { name: 'drop', pos: [-5.0, 1.6, 0.6], look: [1.6, 2.6, 2.8], fov: 60, event: true, test: () => false },
+  { name: 'intro', pos: [-5.0, 1.7, -1.0], look: [1.6, 1.3, -1.3], fov: 42, event: true, test: () => false },
+  { name: 'deal', pos: [-3.8, 1.7, 3.2], look: [-0.8, 1.1, 0.6], fov: 52, event: true, test: () => false },
 ]
 
 export function build() {
@@ -69,6 +69,7 @@ export function build() {
     } else box([(x0 + x1) / 2 - 1, 0.95, -2.22], [(x0 + x1) / 2 + 1, 3.4, -2.14], M.boxcar, [2, 2.4]);
     solid(x0 - 0.1, -5.0, x1 + 0.1, -2.2);
   };
+  solid(-14, -6.2, 16, -4.9);
   car(-13, -6.4, false); car(-6.0, 0.6, false); car(1.0, 7.6, true);
   // 機関車（東の端）
   box([8.0, 0.95, -4.85], [13.5, 3.2, -2.35], M.loco, 1);

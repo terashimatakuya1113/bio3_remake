@@ -10,6 +10,7 @@ const B = { x0: -10, x1: 10, z0: -7, z1: 7 };
 const CAMS = [
   { name: 'officeDoor', pos: [-3.6, 3.4, 6.4], look: [-9.6, 0.6, 0.6], fov: 58, test: (x, z, m) => x < -5.2 + m && z > -1.5 - m },
   { name: 'warehouse', pos: [1.6, 3.0, 0.8], look: [-4.6, 0.8, -6.8], fov: 60, test: (x, z, m) => x < 1.5 + m && z < -1.5 + m },
+  { name: 'shutter', pos: [-1.6, 3.8, 0.4], look: [5.0, 0.5, -6.2], fov: 60, test: (x, z, m) => x > 1.4 - m && z < -3.2 + m },
   { name: 'cold', pos: [2.0, 3.4, -0.4], look: [9.8, 0.8, -3.4], fov: 60, test: (x, z, m) => x > 1.5 - m && z < 0.8 + m },
   { name: 'guard', pos: [-3.2, 3.7, 1.0], look: [-5.2, 0.7, 7.0], fov: 64, test: (x, z, m) => x < 0.5 + m && z > 3.4 - m },
   { name: 'fence', pos: [-1.6, 3.2, 5.2], look: [9.0, 0.5, 4.6], fov: 58, test: (x, z, m) => x > 0.5 - m && z > 3.7 - m },

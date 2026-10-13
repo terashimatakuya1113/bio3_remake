@@ -12,6 +12,7 @@ const CAMS = [
   { name: 'start', pos: [-1.3, 1.75, 3.75], look: [-5.0, 0.9, 0.8], fov: 56, test: (x, z, m) => (x < -2.1 + m && z > -0.6 - m) || (x < -1.5 + m && z > 2.6 - m) },
   { name: 'typewriter', pos: [-0.9, 2.1, 0.7], look: [-4.3, 0.8, -3.3], fov: 50, test: (x, z, m) => x < -1.5 + m && z < -0.6 + m },
   { name: 'center', pos: [-2.7, 1.55, -2.5], look: [2.0, 0.7, 2.6], fov: 56, test: (x, z, m) => x < 2.2 + m },
+  { name: 'sofa', pos: [1.6, 1.9, 0.2], look: [-4.6, 0.6, 3.4], fov: 54, test: () => false },
   { name: 'east', pos: [1.0, 2.2, 2.7], look: [4.7, 0.7, -1.7], fov: 52, test: () => true },
 ];
 

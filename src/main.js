@@ -13,6 +13,7 @@ import { W, PLAYER_R, angleDiff, approach, smooth, collide, pushApart, blobShado
 import { makeEnemy } from './enemies.js';
 import { makeNpc } from './npcs.js';
 import { ROOMS } from './rooms/index.js';
+import { pickCam } from './camsel.js';
 import { STORY } from './story.js';
 
 // ---------------------------------------------------------------- 描画の準備
@@ -57,10 +58,7 @@ function setCamera(c) {
 function updateCamera(force = false) {
   if (camLocked) return;
   const CAMS = room.cams;
-  let next = CAMS.length - 1;
-  for (let i = 0; i < CAMS.length; i++) {
-    if (CAMS[i].test(player.x, player.z, i === camIndex ? 0.35 : 0)) { next = i; break; }
-  }
+  let next = pickCam(CAMS, player.x, player.z, camIndex);
   if (camForce >= 0) next = camForce;
   if (next !== camIndex || force) {
     camIndex = next;

@@ -12,7 +12,7 @@ const CAMS = [
   { name: 'van', pos: [3.2, 3.0, -3.6], look: [-6.4, 0.6, 3.6], fov: 60, test: (x, z, m) => x < -1.0 + m },
   { name: 'booth', pos: [-2.6, 3.2, 4.8], look: [6.0, 0.6, -4.0], fov: 60, test: (x, z, m) => x < 5.2 + m && z < 0.6 + m },
   { name: 'road', pos: [-3.4, 3.6, -3.4], look: [9.6, 0.6, 3.6], fov: 58, test: () => true },
-  { name: 'standoff', pos: [4.2, 1.7, -2.4], look: [-3.2, 1.0, 1.8], fov: 54, test: () => false },
+  { name: 'standoff', pos: [4.2, 1.7, -2.4], look: [-3.2, 1.0, 1.8], fov: 54, event: true, test: () => false },
 ];
 
 export function build() {
