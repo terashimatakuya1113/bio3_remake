@@ -219,6 +219,25 @@ export const sfx = {
     const g = ctx.createGain(); env(g, t, 0.01, 0.3, 0.35);
     o.connect(g).connect(master); o.start(t); o.stop(t + 0.45);
   },
+  // ナイフ：空を切る音と、当たったときの鈍い音
+  knife() { burst({ freq: 2600, q: 1.2, peak: 0.25, attack: 0.03, decay: 0.12 }); },
+  stab() {
+    burst({ freq: 500, q: 1.5, peak: 0.45, decay: 0.1, delay: 0.03 });
+    burst({ freq: 1600, q: 3, peak: 0.15, decay: 0.06, delay: 0.03 });
+  },
+  shotgun() {
+    burst({ freq: 900, q: 0.4, type: 'lowpass', peak: 1.0, decay: 0.4 });
+    burst({ freq: 80, q: 0.8, type: 'lowpass', peak: 1.0, decay: 0.55 });
+    burst({ freq: 2400, q: 0.6, peak: 0.25, decay: 0.8, delay: 0.06 });
+    // ポンプを引く音
+    burst({ freq: 1400, q: 4, peak: 0.3, decay: 0.06, delay: 0.45 });
+    burst({ freq: 1100, q: 4, peak: 0.35, decay: 0.07, delay: 0.62 });
+  },
+  magnum() {
+    burst({ freq: 700, q: 0.4, type: 'lowpass', peak: 1.0, decay: 0.5 });
+    burst({ freq: 60, q: 0.9, type: 'lowpass', peak: 1.0, decay: 0.7 });
+    burst({ freq: 3200, q: 0.5, peak: 0.35, decay: 1.2, delay: 0.04 });
+  },
   locked() {
     burst({ freq: 1800, q: 6, peak: 0.25, decay: 0.08 });
     burst({ freq: 1500, q: 6, peak: 0.25, decay: 0.08, delay: 0.12 });

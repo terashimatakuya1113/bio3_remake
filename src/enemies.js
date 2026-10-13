@@ -41,12 +41,12 @@ export function makeZombie(spec) {
     ...humanoidBody(COLORS[spec.colors] || spec.colors || COLORS.worker),
   };
   z.active = () => z.state === 'walk' || z.state === 'grab' || z.state === 'stagger';
-  z.hit = (dx, dz) => {
+  z.hit = (dx, dz, dmg = 1) => {
     W.fxs.bloodSpray(new THREE.Vector3(z.x - dx * 0.1, 1.3, z.z - dz * 0.1), dx, dz);
-    z.headJerk = 1;
-    z.hp--;
+    z.headJerk = Math.min(1.6, dmg);
+    z.hp -= dmg;
     if (z.hp <= 0) { z.state = 'dying'; z.t = 0; }
-    else { z.state = 'stagger'; z.stagger = 0.55; z.x += dx * 0.18; z.z += dz * 0.18; collide(z, 0.3); }
+    else { z.state = 'stagger'; z.stagger = 0.45 + 0.15 * Math.min(3, dmg); const k = 0.18 * Math.min(3, Math.max(0.5, dmg)); z.x += dx * k; z.z += dz * k; collide(z, 0.3); }
   };
   z.update = (dt) => updateZombie(z, dt);
   z.examine = () => z.state === 'dormant' || z.state === 'dead';
@@ -211,10 +211,10 @@ export function makeDogEnemy(spec) {
   };
   d.root = model.root;
   d.active = () => ['land', 'roam', 'run', 'stalk', 'lunge', 'bite', 'recover', 'stagger'].includes(d.state);
-  d.hit = (dx, dz) => {
+  d.hit = (dx, dz, dmg = 1) => {
     W.fxs.bloodSpray(new THREE.Vector3(d.x - dx * 0.1, 0.55, d.z - dz * 0.1), dx, dz);
     sfx.yelp();
-    d.hp--;
+    d.hp -= dmg;
     if (d.hp <= 0) { d.state = 'dying'; d.t = 0; }
     else { d.state = 'stagger'; d.t = 0; d.x += dx * 0.3; d.z += dz * 0.3; collide(d, 0.3); }
   };
@@ -375,10 +375,10 @@ export function makePorter(spec) {
     ...body,
   };
   p.active = () => ['walk', 'charge', 'punch', 'stagger', 'roar', 'turn'].includes(p.state);
-  p.hit = (dx, dz) => {
+  p.hit = (dx, dz, dmg = 1) => {
     W.fxs.bloodSpray(new THREE.Vector3(p.x - dx * 0.15, 1.9, p.z - dz * 0.15), dx, dz);
     p.headJerk = 0.6;
-    p.hp--; p.hits++;
+    p.hp -= dmg; p.hits += dmg >= 3 ? 4 : 1;
     if (p.hp <= 0) {
       p.state = p.final ? 'dying' : 'down'; p.t = 0;
       sfx.porterRoar(0.6);
@@ -590,10 +590,10 @@ export function makeSoldier(spec) {
     ...body,
   };
   s.active = () => ['guard', 'aim', 'stagger', 'hunt'].includes(s.state);
-  s.hit = (dx, dz) => {
+  s.hit = (dx, dz, dmg = 1) => {
     W.fxs.bloodSpray(new THREE.Vector3(s.x - dx * 0.1, 1.3, s.z - dz * 0.1), dx, dz);
     s.headJerk = 1;
-    s.hp--;
+    s.hp -= dmg;
     sfx.grunt();
     if (s.hp <= 0) { s.state = 'dying'; s.t = 0; }
     else { s.state = 'stagger'; s.t = 0; s.x += dx * 0.12; s.z += dz * 0.12; collide(s, 0.3); }

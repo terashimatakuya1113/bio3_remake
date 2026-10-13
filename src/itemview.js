@@ -1,6 +1,7 @@
 // ステータス画面の 3D 表示：左上の窓で選んだアイテムを回し、左下の窓に主人公の顔を映す
 // どちらもゲーム本体と同じ 320x240 のキャンバスに、ビューポートを絞って描く
 import * as THREE from 'three';
+import { makeWeaponMesh } from './weapons.js';
 import { lighting, ps1Material, newBuilder, addBox, buildGeometry, RES_H, MAX_LIGHTS } from './ps1.js';
 
 // index.html のメニュー配置（320x240 の座標）と合わせる
@@ -129,9 +130,38 @@ function makePhoto() {
   return g;
 }
 
+function weaponModel(id, scale, y = 0) {
+  const g = new THREE.Group();
+  const m = makeWeaponMesh(id);
+  m.rotation.y = Math.PI / 2;
+  m.scale.setScalar(scale);
+  g.add(m);
+  g.position.y = y;
+  return g;
+}
+
+function makeAmmoBox(box, band, round, tip) {
+  const parts = [
+    [[-0.2, -0.12, -0.14], [0.2, 0.06, 0.14], box],
+    [[-0.205, -0.06, -0.145], [0.205, 0.0, 0.145], band],
+  ];
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) {
+    const x = -0.135 + i * 0.09, z = -0.05 + j * 0.1;
+    parts.push([[x - 0.03, 0.06, z - 0.03], [x + 0.03, 0.15, z + 0.03], round]);
+    parts.push([[x - 0.022, 0.15, z - 0.022], [x + 0.022, 0.18, z + 0.022], tip]);
+  }
+  const g = new THREE.Group();
+  g.add(boxes(parts));
+  return g;
+}
+
 export function createItemView() {
   const scene = new THREE.Scene();
-  const models = { handgun: makeHandgun(), ammo: makeAmmo(), key: makeKey(), herb: makeHerb(), card: makeCard(), radioKey: makeKey2([0.6, 0.12, 0.1]), gateKey: makeKey2([0.2, 0.32, 0.55]), photo: makePhoto() };
+  const models = {
+    knife: weaponModel('knife', 2.6, 0.02), shotgun: weaponModel('shotgun', 0.82, 0.05), magnum: weaponModel('magnum', 2.1, 0.08),
+    shells: makeAmmoBox([0.62, 0.14, 0.1], [0.4, 0.08, 0.06], [0.75, 0.16, 0.1], [0.8, 0.62, 0.25]),
+    magnumAmmo: makeAmmoBox([0.16, 0.24, 0.45], [0.1, 0.14, 0.3], [0.85, 0.66, 0.28], [0.6, 0.6, 0.62]),
+    handgun: makeHandgun(), ammo: makeAmmo(), key: makeKey(), herb: makeHerb(), card: makeCard(), radioKey: makeKey2([0.6, 0.12, 0.1]), gateKey: makeKey2([0.2, 0.32, 0.55]), photo: makePhoto() };
   const pivot = new THREE.Group();
   for (const m of Object.values(models)) { m.visible = false; pivot.add(m); }
   scene.add(pivot);

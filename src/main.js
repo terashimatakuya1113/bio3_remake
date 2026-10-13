@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { RES_W, RES_H, lighting, ps1Material, boxMesh } from './ps1.js';
 import { buildDoorScene } from './doorscene.js';
-import { makeHumanoid, makeGun, zeroPose, dampPose, applyPose } from './actors.js';
+import { makeHumanoid, zeroPose, dampPose, applyPose } from './actors.js';
+import { WEAPONS, AMMO_FOR, makeWeaponMesh, addWeaponPickups } from './weapons.js';
 import { playerPose, strideLength, WALK_SPEED, RUN_SPEED, BACK_SPEED } from './anim.js';
 import { initAudio, sfx, setRain, setTension } from './audio.js';
 import { TEXT, FILES } from './text.js';
@@ -37,6 +38,7 @@ const built = {};
 function getRoom(id) {
   if (!built[id]) {
     const room = ROOMS[id]();
+    addWeaponPickups(room);
     const bgs = backdrop.bakeRoom(room, room.cams, camera);
     built[id] = { room, bgs, fx: createFx(room.scene) };
   }
@@ -70,10 +72,13 @@ function updateCamera(force = false) {
 const PLAYER_COLORS = { top: '#3a4a66', sleeve: '#3a4a66', vest: '#23262a', collar: '#2a3448', pants: '#4a4a44', boots: '#1e1c1a', skin: '#d0a07c', hair: '#3a2416', lips: '#9a5a48',
   extra: [[[-0.07, 0.06, 0.11], [0.07, 0.2, 0.14], '#2a2c2e'], [[-0.17, 0.3, -0.16], [0.17, 0.52, -0.1], '#2e3428']] };
 const pModel = makeHumanoid(PLAYER_COLORS);
-const gun = makeGun();
+// 手に持つ武器：武器ごとのモデルを用意して、装備中のものだけ見せる
+const gun = new THREE.Group();
 gun.position.set(0, -0.29, 0.03);
 gun.rotation.x = Math.PI / 2;
 pModel.parts.elbowR.add(gun);
+const weaponMeshes = {};
+for (const id of Object.keys(WEAPONS)) { weaponMeshes[id] = makeWeaponMesh(id); gun.add(weaponMeshes[id]); }
 const flashMesh = boxMesh([-0.04, -0.04, -0.04], [0.04, 0.04, 0.04], ps1Material({ tint: 0xffdd88, emissive: 1 }), 1, 1);
 flashMesh.position.set(0, 0, 0.26);
 gun.add(flashMesh);
@@ -91,7 +96,7 @@ const timers = [];
 
 function newPlayer() {
   return { x: 0, z: 0, yaw: 0, phase: 0, speed: 0, turnVel: 0, turnPhase: 0, aiming: false,
-    quick: 0, quickFrom: 0, health: 100, ammo: 10, inv: [{ id: 'handgun' }], hurt: 0, held: 0, fireCd: 0, recoil: 0,
+    quick: 0, quickFrom: 0, health: 100, weapon: 'handgun', loaded: { handgun: 10, shotgun: 0, magnum: 0 }, inv: [{ id: 'knife' }, { id: 'handgun' }], hurt: 0, held: 0, fireCd: 0, recoil: 0,
     aimW: 0, turnW: 0, limpW: 0, quickW: 0, heldW: 0, deadW: 0, idleT: 0, look: 0, lookTarget: 0, lookT: 0, knock: null };
 }
 
@@ -134,7 +139,7 @@ function loadRoom(id, spawn) {
   lighting.uFogNear.value = env.fog?.[0] ?? 7;
   lighting.uFogFar.value = env.fog?.[1] ?? 16;
   // この部屋に入った時点の状態を、やられたときのやり直し地点にする
-  checkpoint = JSON.parse(JSON.stringify({ S, p: { health: player.health, ammo: player.ammo, inv: player.inv } }));
+  checkpoint = JSON.parse(JSON.stringify({ S, p: { health: player.health, weapon: player.weapon, loaded: player.loaded, inv: player.inv } }));
   W.state = cutDepth > 0 ? 'event' : 'play';
   updatePlayerPose();
   for (const e of W.enemies) e.update(0);
@@ -190,7 +195,7 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   screen: $('screen'), msg: $('msg'), msgText: $('msg-text'), choice: $('choice'),
   doc: $('doc'), docTitle: $('doc-title'), docBody: $('doc-body'), fade: $('fade'), title: $('title'), intro: $('intro'),
-  hud: $('hud'), ammo: $('ammo'), cond: $('cond'), hurt: $('hurt'), dead: $('dead'),
+  hud: $('hud'), ammo: $('ammo'), wname: $('wname'), cond: $('cond'), hurt: $('hurt'), dead: $('dead'),
   select: $('select'), selPrompt: $('sel-prompt'), selOpts: $('sel-opts'), selBar: $('sel-bar'),
   ending: $('ending'), endTitle: $('end-title'), endBody: $('end-body'), endFoot: $('end-foot'), chapter: $('chapter'),
 };
@@ -411,7 +416,7 @@ function pickup(pk) {
     pk.mesh.visible = false;
     sfx.pickup();
     addItem(pk.item, pk.count || 1);
-    const got = `「${def.name}」を手に入れた。${pk.count > 1 ? `（${pk.count}${pk.item === 'ammo' ? '発' : '個'}）` : ''}`;
+    const got = `「${def.name}」を手に入れた。${pk.count > 1 ? `（${pk.count}${AMMO_FOR[pk.item] ? '発' : '個'}）` : ''}`;
     say([got], () => STORY[room.id]?.onPickup?.(G, pk));
   } }]);
 }
@@ -444,14 +449,22 @@ function addItem(id, count = 1) {
 // ステータス画面で「使う」を選んだとき。戻り値は画面下に出す一言
 function useItem(it) {
   const p = player;
-  if (it.id === 'ammo') {
-    const need = 15 - p.ammo;
+  if (WEAPONS[it.id]) {
+    if (p.weapon === it.id) return `${ITEMS[it.id].name}を装備している。`;
+    p.weapon = it.id;
+    sfx.reload();
+    return `${ITEMS[it.id].name}を装備した。`;
+  }
+  const w = AMMO_FOR[it.id];
+  if (w) {
+    if (!p.inv.some((x) => x.id === w)) return `${ITEMS[w].name}を持っていない。`;
+    const need = WEAPONS[w].cap - p.loaded[w];
     if (need <= 0) return 'これ以上は装填できない。';
     const take = Math.min(need, it.count);
-    p.ammo += take; it.count -= take;
+    p.loaded[w] += take; it.count -= take;
     if (it.count <= 0) p.inv.splice(p.inv.indexOf(it), 1);
     sfx.reload();
-    return 'ハンドガンに装填した。';
+    return `${ITEMS[w].name}に装填した。`;
   }
   if (it.id === 'herb') {
     if (p.health >= 100) return '今は使う必要がない。';
@@ -595,7 +608,9 @@ function updatePlayer(dt) {
 
   animatePlayer(dt, t);
   ui.hud.hidden = !p.aiming;
-  ui.ammo.textContent = String(p.ammo).padStart(2, '0');
+  const wd = WEAPONS[p.weapon];
+  ui.wname.textContent = wd.name;
+  ui.ammo.textContent = wd.melee ? '' : String(p.loaded[p.weapon]).padStart(2, '0');
 }
 
 // 会話中・死亡時など、操作を受け付けないあいだも体は自然に止まる
@@ -618,6 +633,7 @@ function animatePlayer(dt, t) {
   dampPose(pPose, pTarget, dt, 22);
   applyPose(pModel.parts, pPose);
   gun.visible = player.aimW > 0.6;
+  for (const id in weaponMeshes) weaponMeshes[id].visible = id === player.weapon;
   flashMesh.visible = flashT > 0;
 }
 
@@ -636,32 +652,55 @@ function pickTarget(p) {
 
 function fire() {
   const p = player;
-  p.fireCd = 0.42;
-  if (p.ammo <= 0) {
-    // 予備の弾があれば自動で装填する
-    const reserve = p.inv.find((it) => it.id === 'ammo');
-    if (reserve) { useItem(reserve); p.fireCd = 1.0; return; }
-    sfx.empty(); return;
+  const w = WEAPONS[p.weapon];
+  p.fireCd = w.cd;
+  if (w.melee) {
+    // ナイフ：目の前を切りつける
+    p.recoil = 1;
+    sfx.knife();
+    let hit = null, hd = w.range;
+    for (const e of targets()) {
+      const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz) - (e.big ? 0.4 : 0);
+      if (d < hd && Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw)) < w.cone) { hit = e; hd = d; }
+    }
+    if (hit) { const d = Math.hypot(hit.x - p.x, hit.z - p.z) || 1; sfx.stab(); hit.hit((hit.x - p.x) / d, (hit.z - p.z) / d, w.dmg); }
+    return;
   }
-  p.ammo--;
-  p.recoil = 1;
-  flashT = 0.06;
+  if (p.loaded[p.weapon] <= 0) {
+    // 予備の弾があれば自動で装填する。弾が尽きたらナイフに持ち替える
+    const reserve = p.inv.find((it) => it.id === w.ammo);
+    if (reserve) { useItem(reserve); p.fireCd = 1.0; return; }
+    sfx.empty();
+    if (p.inv.some((it) => it.id === 'knife')) p.weapon = 'knife';
+    return;
+  }
+  p.loaded[p.weapon]--;
+  p.recoil = w.recoil;
+  flashT = p.weapon === 'handgun' ? 0.06 : 0.09;
+  flashMesh.position.z = w.flash;
   flashMesh.rotation.z = Math.random() * 3;
-  flashMesh.scale.setScalar(1.2 + Math.random() * 1.2);
-  sfx.gun();
+  flashMesh.scale.setScalar((1.2 + Math.random() * 1.2) * (p.weapon === 'handgun' ? 1 : 1.8));
+  sfx[p.weapon === 'handgun' ? 'gun' : p.weapon]();
+  if (p.weapon !== 'handgun') shakeT = Math.max(shakeT, 0.18);
   const gp = new THREE.Vector3();
   gun.getWorldPosition(gp);
-  W.fxs.ejectShell(gp, p.yaw);
-  // 構えた向きの細い扇形に入っている、いちばん近い相手に当たる
-  let hit = null, hd = 12;
+  if (p.weapon !== 'magnum') W.fxs.ejectShell(gp, p.yaw);
+  // 構えた向きの扇形に入っている相手に当たる。ふつうはいちばん近い 1 体、散弾と貫通は全員
+  const inCone = [];
   for (const e of targets()) {
     const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz);
-    const cone = e.low ? 0.42 : e.big ? 0.45 : 0.35;
-    if (d < hd && Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw)) < cone) { hit = e; hd = d; }
+    const cone = w.cone + (e.low ? 0.07 : e.big ? 0.1 : 0);
+    if (d < w.range && Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw)) < cone) inCone.push({ e, d });
   }
-  if (!hit) return;
+  if (!inCone.length) return;
+  inCone.sort((a, b) => a.d - b.d);
+  const hits = w.pellets || w.pierce ? inCone : inCone.slice(0, 1);
   sfx.hit();
-  hit.hit((hit.x - p.x) / hd, (hit.z - p.z) / hd);
+  for (const { e, d } of hits) {
+    // 散弾は離れるほど弱くなる
+    const dmg = w.pellets ? w.dmg * Math.max(0.3, 1 - Math.max(0, d - 2) / 6) : w.dmg;
+    e.hit((e.x - p.x) / d, (e.z - p.z) / d, dmg);
+  }
 }
 
 function hurtFx() { hurtFlash = 0.35; condT = 2.5; }
@@ -925,6 +964,6 @@ window.__game = {
     loadRoom(id, spawn || S.spawn);
     ui.fade.style.opacity = 0;
   },
-  give: (id, n) => addItem(id, n), G,
+  give: (id, n) => addItem(id, n), useItem, G,
   bake: (id) => getRoom(id),
 };

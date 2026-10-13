@@ -2,8 +2,13 @@
 // 左上＝アイテムの 3D 表示窓とコマンド、右上＝MAP/FILE/RADIO/EXIT、右＝アイテム欄、
 // 左下＝顔・心電図・装備中の武器、最下段＝アイテム名とメッセージ
 export const ITEMS = {
+  knife: { name: 'ナイフ', desc: 'UBCS 支給のコンバットナイフ。\n弾はいらないが、近づかないと届かない。', equip: true },
   handgun: { name: 'ハンドガン', desc: '9mm 口径の自動拳銃。\n装弾数は 15 発。', equip: true },
+  shotgun: { name: 'ショットガン', desc: '警備員用のポンプ式散弾銃。\n近いほど威力が高く、まとめてなぎ倒せる。装弾数 7 発。', equip: true },
+  magnum: { name: 'マグナム', desc: '所長の大型リボルバー。\n一発の威力は桁違いで、並んだ敵も貫く。装弾数 6 発。', equip: true },
   ammo: { name: 'ハンドガンの弾', desc: 'ハンドガン用の 9mm 弾。\nハンドガンと組み合わせると装填できる。', stack: true },
+  shells: { name: 'ショットガンの弾', desc: '12 ゲージの散弾。\nショットガンと組み合わせると装填できる。', stack: true },
+  magnumAmmo: { name: 'マグナムの弾', desc: '.44 マグナム弾。\nマグナムと組み合わせると装填できる。', stack: true },
   key: { name: '事務所の鍵', desc: '「管理事務所」と書かれた札がついた鍵。\n表の扉の鍵らしい。' },
   herb: { name: '応急パック', desc: '包帯と消毒液、鎮痛剤のセット。\n救急隊の手つきなら、体力をかなり戻せる。' },
   card: { name: '冷蔵倉庫のカードキー', desc: '「冷蔵倉庫　入室許可」と印字された磁気カード。\n血で汚れている。' },
@@ -29,7 +34,29 @@ function icon(id) {
   const g = c.getContext('2d');
   const r = (col, x, y, w, h) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
   const poly = (col, pts) => { g.fillStyle = col; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.fill(); };
-  if (id === 'handgun') {
+  if (id === 'knife') {
+    r('#1c1a18', 4, 12, 9, 4); r('#3a3a3e', 13, 10, 2, 8);
+    poly('#b8bcc4', [[15, 11], [28, 12], [31, 14], [15, 16]]);
+    r('#e8ecf4', 15, 11, 13, 1);
+  } else if (id === 'shotgun') {
+    r('#5a3c26', 1, 12, 9, 6); r('#3a2818', 1, 17, 7, 2);
+    r('#2e3034', 9, 11, 7, 5); r('#26282c', 15, 10, 18, 3);
+    r('#4a3424', 17, 13, 9, 3); r('#2e3034', 11, 16, 2, 4);
+    r('#6a6e76', 15, 10, 18, 1);
+  } else if (id === 'magnum') {
+    r('#9aa0aa', 13, 7, 18, 3); r('#d0d4dc', 13, 7, 18, 1);
+    r('#7a808a', 9, 6, 7, 7); r('#5a606a', 10, 8, 5, 1); r('#5a606a', 10, 10, 5, 1);
+    poly('#3a2a1e', [[7, 12], [12, 12], [10, 22], [5, 22]]);
+    r('#2a2c30', 12, 13, 5, 1); r('#2a2c30', 16, 11, 1, 3);
+  } else if (id === 'shells' || id === 'magnumAmmo') {
+    const box = id === 'shells' ? ['#7a1a14', '#a8281c'] : ['#1e2a4a', '#2e4278'];
+    r('#1a1a1a', 6, 11, 23, 12); r(box[1], 6, 10, 22, 12); r(box[0], 6, 18, 22, 4);
+    r('#e8d8a0', 9, 13, 8, 2);
+    for (let i = 0; i < 5; i++) {
+      if (id === 'shells') { r('#c02818', 8 + i * 4, 4, 3, 6); r('#c8a040', 8 + i * 4, 8, 3, 2); }
+      else { r('#c8a040', 8 + i * 4, 5, 3, 5); r('#8a8a8a', 8 + i * 4, 4, 3, 1); }
+    }
+  } else if (id === 'handgun') {
     poly('#1a1a1c', [[9, 12], [15, 12], [13, 23], [6, 23]]);
     poly('#3a2e24', [[10, 13], [14, 13], [12.5, 21], [7.5, 21]]);
     r('#2c2e32', 6, 10, 22, 3);
@@ -103,7 +130,7 @@ function layout() {
     <div class="mx m-grid" style="${at(208, 50, 80, 150)}"><div id="m-items"></div></div>
     <div class="mx frame face" style="${at(31, 137, 38, 44)}"><div class="hole"></div></div>
     <div class="mx m-ecg" id="m-cond" style="${at(72, 137, 74, 44)}"><span class="ecg-label">ECG</span><canvas id="ecg" width="60" height="29"></canvas><span id="m-cond-text">Fine</span></div>
-    <div class="mx m-equip" style="${at(150, 135, 52, 46)}"><span class="arrow"></span><img src="${ICONS.handgun}" alt=""><b id="m-equip-ammo">10</b></div>
+    <div class="mx m-equip" style="${at(150, 135, 52, 46)}"><span class="arrow"></span><img id="m-equip-img" src="${ICONS.handgun}" alt=""><b id="m-equip-ammo">10</b></div>
     <div class="mx m-name" id="m-name" style="${at(34, 184, 170, 16)}"></div>
     <div class="mx m-bar" style="${at(22, 204, 278, 30)}"><div id="m-desc"></div></div>`;
 }
@@ -129,7 +156,9 @@ export function createMenu(root) {
     const lv = level(player.health);
     el('#m-cond-text').textContent = { fine: 'Fine', caution: 'Caution', danger: 'Danger' }[lv];
     el('#m-cond').dataset.level = lv;
-    el('#m-equip-ammo').textContent = player.ammo;
+    const W = player.weapon;
+    el('#m-equip-ammo').textContent = W === 'knife' ? '' : player.loaded[W];
+    el('#m-equip-img').src = ICONS[W];
     let html = '';
     for (let i = 0; i < SLOTS; i++) {
       const it = inv[i];
@@ -138,8 +167,8 @@ export function createMenu(root) {
       if (mode === 'combine' && i === from) cls.push('from');
       let inner = '';
       if (it) {
-        const count = it.id === 'handgun' ? player.ammo : ITEMS[it.id].stack ? it.count : null;
-        inner = `<img src="${ICONS[it.id]}" alt="">${count != null ? `<b>${count}</b>` : ''}${ITEMS[it.id].equip ? '<em>E</em>' : ''}`;
+        const count = player.loaded[it.id] ?? (ITEMS[it.id].stack ? it.count : null);
+        inner = `<img src="${ICONS[it.id]}" alt="">${count != null ? `<b>${count}</b>` : ''}${it.id === player.weapon ? '<em>E</em>' : ''}`;
       }
       html += `<div class="${cls.join(' ')}">${inner}</div>`;
     }
@@ -197,8 +226,8 @@ export function createMenu(root) {
   }
 
   function combine(a, b) {
-    const ids = [a.id, b.id].sort().join('+');
-    if (ids === 'ammo+handgun') return onUse(a.id === 'ammo' ? a : b) || '';
+    const pair = { ammo: 'handgun', shells: 'shotgun', magnumAmmo: 'magnum' };
+    for (const [x, y] of [[a, b], [b, a]]) if (pair[x.id] === y.id) return onUse(x) || '';
     return 'その組み合わせはできない。';
   }
 
@@ -248,7 +277,7 @@ export function createMenu(root) {
           mode = 'items';
           sfx.cursor();
           if (c === '調べる') { message = ITEMS[it.id].desc; inspect = true; }
-          else if (c === '装備') say(`${ITEMS[it.id].name}を装備している。`);
+          else if (c === '装備') say(onUse(it));
           else if (c === '組合せ') { mode = 'combine'; from = cursor; say('何と組み合わせますか？'); }
           else say(onUse(it));
           if (cursor >= inv.length) cursor = Math.max(0, inv.length - 1);

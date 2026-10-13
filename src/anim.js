@@ -112,7 +112,14 @@ export function playerPose(p, t, o) {
     // 犬のような低い相手には銃口を下げる
     const down = (p.aimDown || 0) * w;
     o.armRx += 0.55 * down; o.armLx += 0.55 * down; o.torsoRx += 0.12 * down; o.headRx += 0.3 * down;
-    o.armRx -= p.recoil * 0.35 * w;
+    if (p.weapon === 'knife') {
+      // ナイフ：右手を低く前に出して構え、振ると右上から左下へ切り払う
+      const k = p.recoil || 0, sw = Math.sin(Math.PI * (1 - k)) * (k > 0 ? 1 : 0);
+      o.armRx = lerp(o.armRx, -1.05 - 0.5 * sw, w); o.elbowR = lerp(o.elbowR, -0.35 + 0.3 * sw, w);
+      o.armRz = lerp(o.armRz, 0.25 - 0.9 * (1 - k) * (k > 0 ? 1 : 0), w);
+      o.armLx = lerp(o.armLx, -0.45, w); o.armLz = lerp(o.armLz, 0.15, w); o.elbowL = lerp(o.elbowL, -0.9, w);
+      o.torsoRy = lerp(o.torsoRy, 0.25 - 0.45 * sw, w); o.torsoRx += 0.12 * w;
+    } else o.armRx -= p.recoil * 0.35 * w;
     o.elbowR -= p.recoil * 0.15 * w;
     o.torsoRx -= p.recoil * 0.05 * w;
     o.headRx -= p.recoil * 0.04 * w;
