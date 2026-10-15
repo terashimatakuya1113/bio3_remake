@@ -170,7 +170,7 @@ export function createBackdrop(renderer) {
   const brightScene = fsQuad(brightMat), blurScene = fsQuad(blurMat);
   function bloom(src, exposure) {
     brightMat.uniforms.src.value = src.texture;
-    brightMat.uniforms.threshold.value = 0.9 / Math.max(exposure, 0.1);
+    brightMat.uniforms.threshold.value = 1.4 / Math.max(exposure, 0.1);
     renderer.setRenderTarget(bloomA); renderer.render(brightScene, fsCam);
     for (const r of [1, 2.5]) {
       blurMat.uniforms.src.value = bloomA.texture; blurMat.uniforms.dir.value.set(r / BW, 0);
@@ -181,7 +181,7 @@ export function createBackdrop(renderer) {
     return bloomA.texture;
   }
   const downMat = new THREE.ShaderMaterial({
-    uniforms: { src: { value: hdr.texture }, aoTex: { value: null }, aoAmount: { value: 0 }, bloomTex: { value: null }, bloomAmount: { value: 0.75 }, outRes: { value: new THREE.Vector2(RES_W, RES_H) }, exposure: { value: 1.0 }, dither: { value: 1.0 } },
+    uniforms: { src: { value: hdr.texture }, aoTex: { value: null }, aoAmount: { value: 0 }, bloomTex: { value: null }, bloomAmount: { value: 0.45 }, outRes: { value: new THREE.Vector2(RES_W, RES_H) }, exposure: { value: 1.0 }, dither: { value: 1.0 } },
     vertexShader: fsVert, fragmentShader: downFrag, depthTest: false, depthWrite: false,
   });
   const downScene = fsQuad(downMat);
