@@ -5,8 +5,8 @@ import { playerPose, WALK_SPEED } from './anim.js';
 import { W, angleDiff, approach, collide, blobShadow } from './world.js';
 
 export const NPC_COLORS = {
-  emma: { top: '#8a2e2e', sleeve: '#8a2e2e', collar: '#e8e0d0', pants: '#3a4a6a', boots: '#e0dcd0', skin: '#e0b090', hair: '#a8743a', lips: '#b06058', eye: '#3a5a6a' },
-  holt: { top: '#c8c4b4', sleeve: '#c8c4b4', collar: '#7a2a24', pants: '#4a4640', boots: '#2a1e16', skin: '#c89a78', hair: '#8a8a84', lips: '#8a5a48',
+  emma: { build: 'slim', hairStyle: 'long', lashes: true, top: '#8a2e2e', sleeve: '#8a2e2e', collar: '#e8e0d0', pants: '#3a4a6a', boots: '#e0dcd0', skin: '#e0b090', hair: '#a8743a', lips: '#b06058', eye: '#3a5a6a' },
+  holt: { beard: '#8a8a84', top: '#c8c4b4', sleeve: '#c8c4b4', collar: '#7a2a24', pants: '#4a4640', boots: '#2a1e16', skin: '#c89a78', hair: '#8a8a84', lips: '#8a5a48',
     extra: [[[-0.02, 0.2, 0.135], [0.02, 0.5, 0.15], '#7a2a24']] },
   victor: { top: '#1e2024', sleeve: '#1e2024', vest: '#2e3028', collar: '#0e1012', pants: '#22242a', boots: '#0e0e0e', skin: '#d0a888', hair: '#c8c0b0', lips: '#8a5a48', eye: '#4a6a8a',
     extra: [[[-0.18, 0.12, 0.1], [0.18, 0.42, 0.17], '#2e3028']] },

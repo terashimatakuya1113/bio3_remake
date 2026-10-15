@@ -85,7 +85,7 @@ export function createKit(bounds) {
   };
 
   // 照明：背景用の光源を置き、必要ならキャラクター用の照明としても登録する
-  const point = (pos, color, intensity, { shadow = false, live: L = null, size = 512 } = {}) => {
+  const point = (pos, color, intensity, { shadow = false, live: L = null, size = 1024 } = {}) => {
     const l = new THREE.PointLight(color, intensity, 0, 2);
     l.position.set(...pos);
     if (shadow) { l.castShadow = true; l.shadow.mapSize.set(size, size); l.shadow.bias = -0.003; l.shadow.radius = 4; }
@@ -93,7 +93,7 @@ export function createKit(bounds) {
     if (L) live.push({ pos: [...pos], color: L.color, range: L.range });
     return l;
   };
-  const spot = (pos, target, color, intensity, angle, { penumbra = 0.6, shadow = true, live: L = null, size = 1024 } = {}) => {
+  const spot = (pos, target, color, intensity, angle, { penumbra = 0.6, shadow = true, live: L = null, size = 2048 } = {}) => {
     const l = new THREE.SpotLight(color, intensity, 0, angle, penumbra, 2);
     l.position.set(...pos); l.target.position.set(...target);
     if (shadow) { l.castShadow = true; l.shadow.mapSize.set(size, size); l.shadow.bias = -0.002; }

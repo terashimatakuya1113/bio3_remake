@@ -69,7 +69,7 @@ function updateCamera(force = false) {
 }
 
 // ---------------------------------------------------------------- 主人公
-const PLAYER_COLORS = { top: '#3a4a66', sleeve: '#3a4a66', vest: '#23262a', collar: '#2a3448', pants: '#4a4a44', boots: '#1e1c1a', skin: '#d0a07c', hair: '#3a2416', lips: '#9a5a48',
+const PLAYER_COLORS = { build: 'slim', hairStyle: 'bob', lashes: true, stripe: '#9c9c88', patch: '#2a5ab0', top: '#3a4a66', sleeve: '#3a4a66', vest: '#23262a', collar: '#2a3448', pants: '#4a4a44', boots: '#1e1c1a', skin: '#d0a07c', hair: '#3a2416', lips: '#9a5a48',
   extra: [[[-0.07, 0.06, 0.11], [0.07, 0.2, 0.14], '#2a2c2e'], [[-0.17, 0.3, -0.16], [0.17, 0.52, -0.1], '#2e3428']] };
 const pModel = makeHumanoid(PLAYER_COLORS);
 // 手に持つ武器：武器ごとのモデルを用意して、装備中のものだけ見せる

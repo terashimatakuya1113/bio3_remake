@@ -36,14 +36,18 @@ const vertexShader = /* glsl */ `
   void main() {
     vec4 world = modelMatrix * vec4(position, 1.0);
     vec3 n = normalize(mat3(modelMatrix) * normal);
-    vec3 light = uAmbient;
+    // 環境光は上から多く、下（床の照り返し）から少なく。足元ほど暗くして床になじませる
+    float sky = n.y * 0.5 + 0.5;
+    vec3 light = uAmbient * (0.8 + 0.75 * sky) * mix(0.65, 1.0, clamp(world.y / 0.9, 0.0, 1.0));
     for (int i = 0; i < ${MAX_LIGHTS}; i++) {
       vec3 d = uLightPos[i] - world.xyz;
       float dist = length(d);
       float att = clamp(1.0 - dist / uLightRange[i], 0.0, 1.0);
       att *= att;
-      float ndl = max(dot(n, d / max(dist, 0.0001)), 0.0);
-      light += uLightColor[i] * att * (0.25 + 0.75 * ndl);
+      float ndl = dot(n, d / max(dist, 0.0001));
+      // 半ランバート気味に回り込ませつつ、陰側はしっかり落とす
+      float wrap = clamp(ndl * 0.65 + 0.35, 0.0, 1.0);
+      light += uLightColor[i] * att * (0.16 + 1.0 * wrap * wrap);
     }
     vLight = mix(light, vec3(1.0), uEmissive) * color * uTint;
 
@@ -247,10 +251,17 @@ export const textures = {
       g.beginPath(); g.arc(16 + (rand() - 0.5) * 16, 16 + (rand() - 0.5) * 16, 3 + rand() * 6, 0, Math.PI * 2); g.fill();
     }
   }),
-  shadow: makeTexture(16, (g, s) => {
+  // 足元の影：中心は塗りつぶし、縁は網点でぼかす（半透明の段階を持たない PS1 流の柔らかい影）
+  shadow: makeTexture(32, (g, s) => {
     g.clearRect(0, 0, s, s);
-    g.fillStyle = '#000';
-    g.beginPath(); g.arc(8, 8, 7, 0, Math.PI * 2); g.fill();
+    const img = g.getImageData(0, 0, s, s);
+    const B = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+      const d = Math.hypot(x + 0.5 - s / 2, y + 0.5 - s / 2) / (s / 2);
+      const a = Math.min(1, Math.max(0, (1 - d) / 0.4));
+      if (a > (B[(x & 3) + (y & 3) * 4] + 0.5) / 16) img.data[(y * s + x) * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
   }),
 };
 

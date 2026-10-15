@@ -13,6 +13,8 @@ const fsVert = /* glsl */ `
 const downFrag = /* glsl */ `
   uniform sampler2D src;
   uniform sampler2D aoTex;
+  uniform sampler2D bloomTex;
+  uniform float bloomAmount;
   uniform float aoAmount;
   uniform vec2 outRes;
   uniform float exposure;
@@ -34,6 +36,8 @@ const downFrag = /* glsl */ `
       c += texture2D(src, suv).rgb * mix(1.0, texture2D(aoTex, suv).r, aoAmount);
     }
     c /= 16.0;
+    // 照明のにじみ（当時のプリレンダ CG に描き込まれていた光のハロー）
+    c += texture2D(bloomTex, vUv).rgb * bloomAmount;
     // 周辺減光
     vec2 q = gl_FragCoord.xy / outRes - 0.5;
     c *= 1.0 - dot(q, q) * 0.9;
@@ -44,6 +48,36 @@ const downFrag = /* glsl */ `
     c = mix(vec3(l), c, 0.85) * vec3(1.02, 1.0, 0.94);
     c += (bayer4(px) - 0.5) / 31.0 * dither;
     c = floor(clamp(c, 0.0, 1.0) * 31.0 + 0.5) / 31.0;
+    gl_FragColor = vec4(c, 1.0);
+  }
+`;
+
+// 明るいところだけを抜き出して縮小する
+const brightFrag = /* glsl */ `
+  uniform sampler2D src;
+  uniform vec2 outRes;
+  uniform float threshold;
+  varying vec2 vUv;
+  void main() {
+    vec2 px = floor(gl_FragCoord.xy);
+    vec3 c = vec3(0.0);
+    for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++)
+      c += texture2D(src, (px + (vec2(i, j) + 0.5) / 4.0) / outRes).rgb;
+    c /= 16.0;
+    float l = max(c.r, max(c.g, c.b));
+    c *= max(l - threshold, 0.0) / max(l, 1e-4);
+    gl_FragColor = vec4(min(c, vec3(8.0)), 1.0);
+  }
+`;
+
+const blurFrag = /* glsl */ `
+  uniform sampler2D src;
+  uniform vec2 dir;
+  varying vec2 vUv;
+  void main() {
+    vec3 c = texture2D(src, vUv).rgb * 0.2270270;
+    c += (texture2D(src, vUv + dir * 1.3846153).rgb + texture2D(src, vUv - dir * 1.3846153).rgb) * 0.3162162;
+    c += (texture2D(src, vUv + dir * 3.2307692).rgb + texture2D(src, vUv - dir * 3.2307692).rgb) * 0.0702702;
     gl_FragColor = vec4(c, 1.0);
   }
 `;
@@ -121,8 +155,33 @@ export function createBackdrop(renderer) {
   const hdrLive = new THREE.WebGLRenderTarget(RES_W * 2, RES_H * 2, {
     type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
   });
+  // 光のにじみ用：1/2 解像度で明部を抜き出し、ぼかしを 2 段かける
+  const BW = RES_W / 2, BH = RES_H / 2;
+  const bloomOpts = { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false };
+  const bloomA = new THREE.WebGLRenderTarget(BW, BH, bloomOpts), bloomB = new THREE.WebGLRenderTarget(BW, BH, bloomOpts);
+  const brightMat = new THREE.ShaderMaterial({
+    uniforms: { src: { value: null }, outRes: { value: new THREE.Vector2(BW, BH) }, threshold: { value: 1.0 } },
+    vertexShader: fsVert, fragmentShader: brightFrag, depthTest: false, depthWrite: false,
+  });
+  const blurMat = new THREE.ShaderMaterial({
+    uniforms: { src: { value: null }, dir: { value: new THREE.Vector2() } },
+    vertexShader: fsVert, fragmentShader: blurFrag, depthTest: false, depthWrite: false,
+  });
+  const brightScene = fsQuad(brightMat), blurScene = fsQuad(blurMat);
+  function bloom(src, exposure) {
+    brightMat.uniforms.src.value = src.texture;
+    brightMat.uniforms.threshold.value = 0.9 / Math.max(exposure, 0.1);
+    renderer.setRenderTarget(bloomA); renderer.render(brightScene, fsCam);
+    for (const r of [1, 2.5]) {
+      blurMat.uniforms.src.value = bloomA.texture; blurMat.uniforms.dir.value.set(r / BW, 0);
+      renderer.setRenderTarget(bloomB); renderer.render(blurScene, fsCam);
+      blurMat.uniforms.src.value = bloomB.texture; blurMat.uniforms.dir.value.set(0, r / BH);
+      renderer.setRenderTarget(bloomA); renderer.render(blurScene, fsCam);
+    }
+    return bloomA.texture;
+  }
   const downMat = new THREE.ShaderMaterial({
-    uniforms: { src: { value: hdr.texture }, aoTex: { value: null }, aoAmount: { value: 0 }, outRes: { value: new THREE.Vector2(RES_W, RES_H) }, exposure: { value: 1.0 }, dither: { value: 1.0 } },
+    uniforms: { src: { value: hdr.texture }, aoTex: { value: null }, aoAmount: { value: 0 }, bloomTex: { value: null }, bloomAmount: { value: 0.75 }, outRes: { value: new THREE.Vector2(RES_W, RES_H) }, exposure: { value: 1.0 }, dither: { value: 1.0 } },
     vertexShader: fsVert, fragmentShader: downFrag, depthTest: false, depthWrite: false,
   });
   const downScene = fsQuad(downMat);
@@ -180,6 +239,7 @@ export function createBackdrop(renderer) {
     renderer.setClearColor(0x000000, 1);
     renderer.clear();
     renderer.render(scene, cam);
+    downMat.uniforms.bloomTex.value = bloom(src, exposure);
     downMat.uniforms.exposure.value = exposure;
     renderer.setRenderTarget(target);
     renderer.render(downScene, fsCam);
