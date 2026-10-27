@@ -22,47 +22,90 @@ export const lighting = {
   uSnap: { value: new THREE.Vector2(RES_W / 2, RES_H / 2) },
 };
 
-const vertexShader = /* glsl */ `
+// 光の計算（頂点でも画素でも同じ式を使う）
+const lightFn = /* glsl */ `
+  vec3 psLight(vec3 n, vec3 world, vec3 V, out vec3 spec, float specAmt) {
+    // 環境光は上から多く、下（床の照り返し）から少なく。足元ほど暗くして床になじませる
+    float sky = n.y * 0.5 + 0.5;
+    vec3 light = uAmbient * (0.8 + 0.75 * sky) * mix(0.65, 1.0, clamp(world.y / 0.9, 0.0, 1.0));
+    spec = vec3(0.0);
+    for (int i = 0; i < ${MAX_LIGHTS}; i++) {
+      vec3 d = uLightPos[i] - world;
+      float dist = length(d);
+      float att = clamp(1.0 - dist / uLightRange[i], 0.0, 1.0);
+      att *= att;
+      vec3 L = d / max(dist, 0.0001);
+      float ndl = dot(n, L);
+      // 半ランバート気味に回り込ませつつ、陰側はしっかり落とす
+      float wrap = clamp(ndl * 0.65 + 0.35, 0.0, 1.0);
+      light += uLightColor[i] * att * (0.16 + 1.0 * wrap * wrap);
+      // 肌：光と影の境目に赤みをにじませる（皮膚の下で散る光の代わり）
+      light += uLightColor[i] * att * uSss * wrap * (1.0 - wrap) * vec3(0.9, 0.28, 0.16);
+      if (specAmt > 0.0) {
+        vec3 H = normalize(L + V);
+        spec += uLightColor[i] * att * specAmt * pow(max(dot(n, H), 0.0), 28.0) * step(0.0, ndl);
+      }
+    }
+    return light;
+  }
+`;
+
+const lightUniforms = /* glsl */ `
   uniform vec3 uAmbient;
   uniform vec3 uLightPos[${MAX_LIGHTS}];
   uniform vec3 uLightColor[${MAX_LIGHTS}];
   uniform float uLightRange[${MAX_LIGHTS}];
+  uniform float uSss;
+`;
+
+const vertexShader = /* glsl */ `
+  ${lightUniforms}
   uniform vec2 uSnap;
   uniform float uEmissive;
   uniform vec3 uTint;
   uniform vec2 uUvOffset;
   attribute vec3 color;
-  varying vec3 vUvW;
-  varying vec3 vLight;
+  #include <skinning_pars_vertex>
+  #ifdef HQ
+    varying vec2 vUv;
+    varying vec3 vWorld;
+    varying vec3 vNormal;
+    varying vec3 vColor;
+  #else
+    varying vec3 vUvW;
+    varying vec3 vLight;
+    ${lightFn}
+  #endif
   varying float vFogDepth;
   void main() {
-    vec4 world = modelMatrix * vec4(position, 1.0);
-    vec3 n = normalize(mat3(modelMatrix) * normal);
-    // 環境光は上から多く、下（床の照り返し）から少なく。足元ほど暗くして床になじませる
-    float sky = n.y * 0.5 + 0.5;
-    vec3 light = uAmbient * (0.8 + 0.75 * sky) * mix(0.65, 1.0, clamp(world.y / 0.9, 0.0, 1.0));
-    for (int i = 0; i < ${MAX_LIGHTS}; i++) {
-      vec3 d = uLightPos[i] - world.xyz;
-      float dist = length(d);
-      float att = clamp(1.0 - dist / uLightRange[i], 0.0, 1.0);
-      att *= att;
-      float ndl = dot(n, d / max(dist, 0.0001));
-      // 半ランバート気味に回り込ませつつ、陰側はしっかり落とす
-      float wrap = clamp(ndl * 0.65 + 0.35, 0.0, 1.0);
-      light += uLightColor[i] * att * (0.16 + 1.0 * wrap * wrap);
-    }
-    vLight = mix(light, vec3(1.0), uEmissive) * color * uTint;
-
+    vec3 objectNormal = normal;
+    vec3 transformed = position;
+    #include <skinbase_vertex>
+    #include <skinnormal_vertex>
+    #include <skinning_vertex>
+    vec4 world = modelMatrix * vec4(transformed, 1.0);
+    vec3 n = normalize(mat3(modelMatrix) * objectNormal);
     vec4 mv = viewMatrix * world;
     vec4 clip = projectionMatrix * mv;
+  #ifdef HQ
+    // 人物：光は画素ごとに計算する。頂点も吸着させず、なめらかに動かす
+    vUv = uv + uUvOffset;
+    vWorld = world.xyz;
+    vNormal = n;
+    vColor = color * uTint;
+    gl_Position = clip;
+  #else
+    vec3 spec;
+    vec3 light = psLight(n, world.xyz, vec3(0.0, 1.0, 0.0), spec, 0.0);
+    vLight = mix(light, vec3(1.0), uEmissive) * color * uTint;
     // 頂点を低解像度グリッドへ吸着（PS1 の固定小数点ジッター）
     vec2 ndc = clip.xy / clip.w;
     ndc = floor(ndc * uSnap + 0.5) / uSnap;
     clip.xy = ndc * clip.w;
     gl_Position = clip;
-
     // UV に w を掛けて渡し、フラグメント側で割るとアフィン補間になる
     vUvW = vec3((uv + uUvOffset) * clip.w, clip.w);
+  #endif
     vFogDepth = -mv.z;
   }
 `;
@@ -73,8 +116,20 @@ const fragmentShader = /* glsl */ `
   uniform float uFogNear;
   uniform float uFogFar;
   uniform float uOpacity;
-  varying vec3 vUvW;
-  varying vec3 vLight;
+  #ifdef HQ
+    ${lightUniforms}
+    uniform float uEmissive;
+    uniform float uSpec;
+    uniform float uRim;
+    varying vec2 vUv;
+    varying vec3 vWorld;
+    varying vec3 vNormal;
+    varying vec3 vColor;
+    ${lightFn}
+  #else
+    varying vec3 vUvW;
+    varying vec3 vLight;
+  #endif
   varying float vFogDepth;
 
   float bayer4(vec2 p) {
@@ -85,11 +140,26 @@ const fragmentShader = /* glsl */ `
   }
 
   void main() {
+  #ifdef HQ
+    vec4 tex = texture2D(map, vUv);
+    if (tex.a < 0.5) discard;
+    vec3 n = normalize(vNormal);
+    if (!gl_FrontFacing) n = -n;
+    vec3 V = normalize(cameraPosition - vWorld);
+    vec3 spec;
+    vec3 light = psLight(n, vWorld, V, spec, uSpec);
+    // 輪郭光：暗い部屋でも人物の形が背景から浮くように、縁をわずかに明るく
+    float rim = pow(1.0 - clamp(dot(n, V), 0.0, 1.0), 3.0);
+    light += rim * uRim * (uAmbient * 2.2 + vec3(0.05, 0.055, 0.07));
+    light = mix(light, vec3(1.0), uEmissive);
+    vec3 c = tex.rgb * light * vColor * 1.6 + spec * vColor;
+  #else
     vec2 uv = vUvW.xy / vUvW.z;
     vec4 tex = texture2D(map, uv);
     if (tex.a < 0.5) discard;
     // PS1 はテクスチャ×頂点色を最大2倍まで明るくできる
     vec3 c = tex.rgb * vLight * 1.6;
+  #endif
     float fog = clamp((vFogDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
     c = mix(c, uFogColor, fog);
     // 15bit カラー + 4x4 オーダードディザ
@@ -101,8 +171,10 @@ const fragmentShader = /* glsl */ `
 
 const whiteTex = makeTexture(4, (g) => { g.fillStyle = '#fff'; g.fillRect(0, 0, 4, 4); });
 
-export function ps1Material({ map = whiteTex, emissive = 0, tint = 0xffffff, opacity = 1, side = THREE.FrontSide } = {}) {
+// hq：人物用。画素ごとの光・つや（spec）・輪郭光（rim）で描く
+export function ps1Material({ map = whiteTex, emissive = 0, tint = 0xffffff, opacity = 1, side = THREE.FrontSide, hq = false, spec = 0, rim = 0, sss = 0 } = {}) {
   return new THREE.ShaderMaterial({
+    defines: hq ? { HQ: '' } : {},
     uniforms: {
       ...lighting,
       map: { value: map },
@@ -110,6 +182,9 @@ export function ps1Material({ map = whiteTex, emissive = 0, tint = 0xffffff, opa
       uTint: { value: new THREE.Color(tint) },
       uOpacity: { value: opacity },
       uUvOffset: { value: new THREE.Vector2() },
+      uSpec: { value: spec },
+      uRim: { value: rim },
+      uSss: { value: sss },
     },
     vertexShader,
     fragmentShader,
