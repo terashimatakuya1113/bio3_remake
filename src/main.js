@@ -585,9 +585,13 @@ function updatePlayer(dt) {
       p.yaw += Math.max(-14 * dt, Math.min(14 * dt, a));
       p.turnVel = 0;
     } else targetTurn = turnDir * 2.6;
+    // 上下：構えたまま上・下を入れると銃口を上げ下げする。入れていなければ狙った相手の高さに合わせる
     const L = p.lock;
-    const down = L && L.low ? Math.min(1, 1.6 / Math.max(0.8, Math.hypot(L.x - p.x, L.z - p.z))) : L && L.big ? -0.25 : 0;
-    p.aimDown = smooth(p.aimDown || 0, down, 10, dt);
+    const pitchIn = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+    const down = pitchIn > 0 ? 0.9 : pitchIn < 0 ? -0.75
+      : L && L.low ? Math.min(1, 1.6 / Math.max(0.8, Math.hypot(L.x - p.x, L.z - p.z))) : L && L.big ? -0.25 : 0;
+    p.aimPitch = pitchIn;
+    p.aimDown = smooth(p.aimDown || 0, down, 14, dt);
     if (pressed.has('action') && p.fireCd <= 0) fire();
   } else {
     if (input.down && pressed.has('run')) { p.quick = QUICK_TIME; p.quickFrom = p.yaw; p.speed = 0; sfx.step(true); }
@@ -721,8 +725,11 @@ function fire() {
   if (p.weapon !== 'magnum') W.fxs.ejectShell(gp, p.yaw);
   // 構えた向きの扇形に入っている相手に当たる。ふつうはいちばん近い 1 体、散弾と貫通は全員
   const inCone = [];
+  // 銃口を上げていると低い相手（犬など）には当たらない。上げて撃つと頭に当たり、効きが強い
+  const up = (p.aimDown || 0) < -0.35, low = (p.aimDown || 0) > 0.35;
   for (const e of targets()) {
     const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz);
+    if (up && e.low && d > 0.9) continue;
     const cone = w.cone + (e.low ? 0.07 : e.big ? 0.1 : 0);
     if (d < w.range && Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw)) < cone) inCone.push({ e, d });
   }
@@ -732,7 +739,9 @@ function fire() {
   sfx.hit();
   for (const { e, d } of hits) {
     // 散弾は離れるほど弱くなる
-    const dmg = w.pellets ? w.dmg * Math.max(0.3, 1 - Math.max(0, d - 2) / 6) : w.dmg;
+    let dmg = w.pellets ? w.dmg * Math.max(0.3, 1 - Math.max(0, d - 2) / 6) : w.dmg;
+    if (up && !e.low) dmg *= 1.5;
+    else if (low && !e.low) dmg *= 0.8;
     e.hit((e.x - p.x) / d, (e.z - p.z) / d, dmg);
   }
 }

@@ -336,6 +336,68 @@ function bakeVertexAO(root, capsules) {
   });
 }
 
+// 顔のテクスチャ（128px、u=0.5 が正面、v=0 が頭頂）の座標で、表面をどれだけ盛るか／彫るか（半径に対する割合）
+function faceRelief(px, py) {
+  const g = (x, y, cx, cy, rx, ry) => Math.exp(-(((x - cx) / rx) ** 2) - (((y - cy) / ry) ** 2));
+  const ax = Math.abs(px);
+  let d = 0;
+  // 眉の張り出しと、その下の眼窩
+  d += 0.065 * g(ax, py, 7, 57.5, 7, 2.8);
+  d -= 0.09 * g(ax, py, 7, 63.5, 4.8, 3.2);
+  d += 0.03 * g(ax, py, 7, 63.8, 3, 1.8); // 眼球のふくらみ
+  d -= 0.045 * g(ax, py, 17, 62, 3.5, 7); // こめかみ
+  // 鼻：眉間から鼻先へ高くなり、鼻先の下で急に落ちる。小鼻を左右に
+  if (py > 56 && py < 78) {
+    const t = Math.min(1, (py - 56) / 18);
+    const h = py <= 74 ? 0.03 + 0.22 * t ** 1.6 : 0.25 * Math.max(0, 1 - (py - 74) / 3.6);
+    d += h * Math.exp(-((px / (1.5 + 2.4 * t)) ** 2));
+  }
+  d += 0.055 * g(ax, py, 3.6, 74.8, 2.2, 1.8);
+  // 頬骨と、その下のくぼみ
+  d += 0.05 * g(ax, py, 11, 70, 4.5, 4.5);
+  d -= 0.035 * g(ax, py, 12.5, 80, 3.5, 4.5);
+  // 唇（上唇・下唇）と口の線、あご
+  d += 0.045 * g(px, py, 0, 82.3, 6, 1.6);
+  d += 0.05 * g(px, py, 0, 85, 4.8, 1.8);
+  d -= 0.02 * g(px, py, 0, 83.6, 5.5, 0.8);
+  d -= 0.02 * g(px, py, 0, 88.5, 5, 1.6);
+  d += 0.065 * g(px, py, 0, 93, 6.5, 3.5);
+  return d;
+}
+
+// 正面ほど細かい格子の球。顔の凹凸は faceRelief で頂点を押し出して作る
+function sculptedHead(r) {
+  const COLS = 40, ROWS = 32;
+  const azs = [], ths = [];
+  for (let j = 0; j <= COLS; j++) { const t = (j / COLS) * 2 - 1; azs.push(Math.PI * Math.sign(t) * Math.abs(t) ** 1.35); }
+  // 縦：頭頂〜額は粗く、顔の帯（眉〜あご）は細かく、首側はまた粗く
+  const band0 = Math.PI * 0.4, band1 = Math.PI * 0.78;
+  for (let i = 0; i <= 6; i++) ths.push((band0 * i) / 6);
+  for (let i = 1; i <= ROWS - 10; i++) ths.push(band0 + ((band1 - band0) * i) / (ROWS - 10));
+  for (let i = 1; i <= 4; i++) ths.push(band1 + ((Math.PI - band1) * i) / 4);
+  const pos = [], uv = [], idx = [];
+  for (const th of ths) {
+    for (const az of azs) {
+      const u = 0.5 + az / (Math.PI * 2), v = th / Math.PI;
+      const k = r * (1 + faceRelief((u - 0.5) * 128, v * 128));
+      pos.push(k * Math.sin(th) * Math.sin(az), k * Math.cos(th), k * Math.sin(th) * Math.cos(az));
+      uv.push(u, 1 - v);
+    }
+  }
+  const W = azs.length;
+  for (let i = 0; i < ths.length - 1; i++) {
+    for (let j = 0; j < W - 1; j++) {
+      const a = i * W + j, b = a + 1, c = a + W, e = c + 1;
+      idx.push(a, c, b, b, c, e);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  return geo;
+}
+
 export function makeHumanoid(c) {
   const tex = makeSkinTextures(c);
   const mat = {};
@@ -365,8 +427,9 @@ export function makeHumanoid(c) {
   head.position.y = 0.56;
   torso.add(head);
   head.add(prism(mat.skin, 0.048, 0.056, 0.11, 8, 0.085));
-  // 頭：あごを少し細く、後頭部を少し張り出させる
-  const skull = new THREE.SphereGeometry(0.112, 12, 10, -Math.PI / 2);
+  // 頭：正面に格子を寄せた球を作り、眉・眼窩・鼻・頬骨・唇・あごを彫り出す
+  // あごを少し細く、後頭部を少し張り出させる
+  const skull = sculptedHead(0.112);
   {
     const sp = skull.attributes.position;
     for (let i = 0; i < sp.count; i++) {
@@ -375,20 +438,18 @@ export function makeHumanoid(c) {
       const k = 1 - 0.22 * low * low;
       sp.setXYZ(i, x * k, y, z * (z < 0 ? 1.04 : k * 1.02 + 0.02 * (1 - low)));
     }
-    skull.computeVertexNormals();
   }
   skull.scale(0.95, 1.14, 1.0);
   skull.translate(0, 0.16, 0.005);
+  skull.computeVertexNormals();
   head.add(new THREE.Mesh(withColor(skull), mat.face));
-  // 鼻：小さな三角柱
-  {
-    const b = new THREE.BufferGeometry();
-    const v = [0, 0.175, 0.112, -0.012, 0.13, 0.108, 0.012, 0.13, 0.108, 0, 0.135, 0.128];
-    b.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
-    b.setAttribute('uv', new THREE.Float32BufferAttribute([0.5, 0.5, 0.47, 0.58, 0.53, 0.58, 0.5, 0.58], 2));
-    b.setIndex([0, 1, 3, 0, 3, 2, 1, 2, 3]);
-    b.computeVertexNormals();
-    head.add(new THREE.Mesh(withColor(b), mat.face));
+  // 耳
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.SphereGeometry(0.028, 6, 5);
+    ear.scale(0.38, 1, 0.62);
+    ear.rotateY(sx * 0.35);
+    ear.translate(sx * 0.104, 0.153, -0.008);
+    head.add(new THREE.Mesh(withColor(ear), mat.skin));
   }
   const hairCap = new THREE.SphereGeometry(0.12, 12, 6, -Math.PI / 2, Math.PI * 2, 0, Math.PI * 0.4);
   hairCap.scale(0.96, 1.16, 1.04);
