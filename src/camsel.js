@@ -32,12 +32,34 @@ export function frameScore(c, x, z) {
 // 足元が少し切れる程度（1.1 まで）は許す
 const OK = 1.1;
 
-export function pickCam(cams, x, z, cur) {
-  const score = (i) => frameScore(cams[i], x, z);
+// カメラから主人公（腰と頭）への線が、背の高い物（occluders：[x0, z0, x1, z1, 高さ]）にすべて遮られるか
+function hidden(c, x, z, occluders) {
+  if (!occluders?.length) return false;
+  const blocked = (ty) => occluders.some(([x0, z0, x1, z1, h]) => {
+    // 線分と箱の交差（スラブ法）
+    const o = c.pos, d = [x - o[0], ty - o[1], z - o[2]];
+    let t0 = 0, t1 = 1;
+    for (const [lo, hi, k] of [[x0, x1, 0], [0, h, 1], [z0, z1, 2]]) {
+      if (Math.abs(d[k]) < 1e-9) { if (o[k] < lo || o[k] > hi) return false; continue; }
+      let a = (lo - o[k]) / d[k], b = (hi - o[k]) / d[k];
+      if (a > b) [a, b] = [b, a];
+      t0 = Math.max(t0, a); t1 = Math.min(t1, b);
+      if (t0 > t1) return false;
+    }
+    return true;
+  });
+  return blocked(0.9) && blocked(1.55);
+}
+
+export function pickCam(cams, x, z, cur, occluders) {
+  const score = (i) => (hidden(cams[i], x, z, occluders) ? 9 : frameScore(cams[i], x, z));
   let pref = cams.length - 1;
   for (let i = 0; i < cams.length; i++) if (!cams[i].event && cams[i].test(x, z, 0)) { pref = i; break; }
   const curOk = cur >= 0 && !cams[cur].event && score(cur) < OK;
   if (curOk) {
+    // どこでも当てはまる予備のカメラにいるときは、範囲の決まったカメラで映るようになりしだい切り替える
+    const fallback = cur === cams.length - 1 && cams[cur].test(1e4, 1e4, 0);
+    if (fallback && pref !== cur && score(pref) < 0.8) return pref;
     // いまのカメラの範囲に（少し余裕をもって）まだいれば、そのまま
     if (cams[cur].test(x, z, 0.35)) return cur;
     // 範囲を出ても、次のカメラで余裕をもって映るようになるまでは切り替えない

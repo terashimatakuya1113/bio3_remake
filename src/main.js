@@ -62,7 +62,7 @@ function setCamera(c) {
 function updateCamera(force = false) {
   if (camLocked) return;
   const CAMS = room.cams;
-  let next = pickCam(CAMS, player.x, player.z, camIndex);
+  let next = pickCam(CAMS, player.x, player.z, camIndex, room.occluders);
   if (camForce >= 0) next = camForce;
   if (next !== camIndex || force) {
     camIndex = next;

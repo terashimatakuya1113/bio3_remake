@@ -14,6 +14,10 @@ const CAMS = [
   { name: 'cold', pos: [2.0, 3.4, -0.4], look: [9.8, 0.8, -3.4], fov: 60, test: (x, z, m) => x > 1.5 - m && z < 0.8 + m },
   { name: 'guard', pos: [-3.2, 3.7, 1.0], look: [-5.2, 0.7, 7.0], fov: 64, test: (x, z, m) => x < 0.5 + m && z > 3.4 - m },
   { name: 'fence', pos: [-1.6, 3.2, 5.2], look: [9.0, 0.5, 4.6], fov: 58, test: (x, z, m) => x > 0.5 - m && z > 3.7 - m },
+  // 運転席の前（東の端）：南東の隅から北西を見下ろす
+  { name: 'cab', pos: [9.4, 3.6, 6.2], look: [5.6, 0.5, -0.6], fov: 58, test: (x, z, m) => x > 6.95 - m && z > 0.0 - m && z < 3.9 + m },
+  // トラックの北側と運転席の前：東の端から、トラックの脇を西へ見通す
+  { name: 'truckSide', pos: [9.3, 3.6, -1.6], look: [-1.5, 0.5, 1.8], fov: 56, test: (x, z, m) => x > 0.2 - m && x < 7.2 + m && z > 0.8 - m && z < 1.4 + m },
   { name: 'truck', pos: [-6.4, 3.6, -2.6], look: [5.0, 0.4, 4.8], fov: 62, test: () => true },
 ];
 
@@ -176,6 +180,8 @@ export function build() {
   // 車輪
   for (const x of [-0.4, 2.9, 5.6]) for (const z of [tz0 + 0.2, tz1 - 0.2]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.36, 14), M.tyre); w.rotation.x = Math.PI / 2; w.position.set(x, 0.5, z); add(w); }
   solid(-1.55, tz0, 6.95, tz1);
+  // カメラ選びで、トラックの陰に主人公が隠れるカメラを避けるための形
+  const occluders = [[-1.55, tz0, 4.0, tz1, 3.45], [4.0, tz0 + 0.1, 6.3, tz1 - 0.1, 2.85]];
   // 荷台の後ろ：運転手の血の跡
   decal(-2.6, 2.4, 2.2, 1.6, M.blood, 0.4);
   decal(-4.4, 1.7, 2.6, 0.7, M.drag, 0.3);
@@ -239,7 +245,7 @@ export function build() {
   look('medkitCrate', -7.4, -5.6, 0.7);
 
   return K.finish({
-    id: 'yard', cams: CAMS,
+    id: 'yard', cams: CAMS, occluders,
     pickups: [
       { id: 'yard.ammo', item: 'ammo', count: 15, mesh: ammo, at: 'cab', found: '運転席の足元に、ハンドガンの弾が落ちている。' },
       { id: 'yard.medkit', item: 'herb', mesh: medkit, at: 'medkitCrate', found: '木箱の上に、応急パックが置いてある。' },
