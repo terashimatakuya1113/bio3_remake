@@ -20,13 +20,14 @@ import { STORY } from './story.js';
 
 // ---------------------------------------------------------------- 描画の準備
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(1);
 renderer.setSize(RES_W, RES_H, false);
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
+renderer.info.autoReset = false;
 const backdrop = createBackdrop(renderer);
 const doorFx = buildDoorScene();
 
@@ -36,13 +37,23 @@ const doorCam = new THREE.PerspectiveCamera(50, RES_W / RES_H, 0.05, 30);
 // ---------------------------------------------------------------- 部屋
 // 一度入った部屋は作った背景ごと取っておく
 const built = {};
+const baking = {};
+// 部屋を組み立て、背景を焼く準備だけしておく（扉の演出中に 1 カメラずつ焼き進める）
+function prepareRoom(id) {
+  if (built[id] || baking[id]) return baking[id];
+  const room = ROOMS[id]();
+  addWeaponPickups(room);
+  dressRoom(room);
+  return (baking[id] = { room, job: backdrop.bakeRoomSteps(room, room.cams, camera) });
+}
+function bakeStep(id) {
+  const b = baking[id];
+  if (b && b.job.step()) { built[id] = { room: b.room, bgs: b.job.out, fx: createFx(b.room.scene) }; delete baking[id]; }
+}
 function getRoom(id) {
   if (!built[id]) {
-    const room = ROOMS[id]();
-    addWeaponPickups(room);
-    dressRoom(room);
-    const bgs = backdrop.bakeRoom(room, room.cams, camera);
-    built[id] = { room, bgs, fx: createFx(room.scene) };
+    prepareRoom(id);
+    while (!built[id]) bakeStep(id);
   }
   return built[id];
 }
@@ -92,7 +103,7 @@ const itemView = createItemView();
 
 // ---------------------------------------------------------------- 状態
 // S：部屋をまたいで残る進行状況（死んだら部屋に入ったときの S に戻す）
-const QUICK_TIME = 0.4;
+const QUICK_TIME = 0.3;
 let S, checkpoint, player, lightningTimer, flicker, flashT, hurtFlash, condT, doorT, pendingDoor, endReady, lastTime, shakeT = 0;
 const timers = [];
 
@@ -244,7 +255,7 @@ function currentText() { const p = pages[pageIdx]; return typeof p === 'string' 
 function updateMessage(dt) {
   const text = currentText();
   if (typed < text.length) {
-    typed = Math.min(text.length, typed + dt * 32);
+    typed = Math.min(text.length, typed + dt * 55);
     ui.msgText.textContent = text.slice(0, Math.floor(typed));
     if (pressed.has('action')) { typed = text.length; ui.msgText.textContent = text; }
     if (typed >= text.length && typeof pages[pageIdx] !== 'string') renderChoice();
@@ -558,7 +569,7 @@ function updatePlayer(dt) {
   let targetSpeed = 0, targetTurn = 0;
 
   if (p.quick > 0) {
-    // クイックターン：0.4 秒で 180°、出だしと終わりをゆるめる
+    // クイックターン：0.3 秒で 180°、出だしと終わりをゆるめる
     p.quick = Math.max(0, p.quick - dt);
     const k = 1 - p.quick / QUICK_TIME;
     p.yaw = p.quickFrom + Math.PI * k * k * (3 - 2 * k);
@@ -571,9 +582,9 @@ function updatePlayer(dt) {
     if (!p.manual && (!p.wasAiming || !p.lock || !targets().includes(p.lock))) p.lock = pickTarget(p);
     if (p.lock) {
       const a = angleDiff(Math.atan2(p.lock.x - p.x, p.lock.z - p.z), p.yaw);
-      p.yaw += Math.max(-9 * dt, Math.min(9 * dt, a));
+      p.yaw += Math.max(-14 * dt, Math.min(14 * dt, a));
       p.turnVel = 0;
-    } else targetTurn = turnDir * 1.7;
+    } else targetTurn = turnDir * 2.6;
     const L = p.lock;
     const down = L && L.low ? Math.min(1, 1.6 / Math.max(0.8, Math.hypot(L.x - p.x, L.z - p.z))) : L && L.big ? -0.25 : 0;
     p.aimDown = smooth(p.aimDown || 0, down, 10, dt);
@@ -581,7 +592,7 @@ function updatePlayer(dt) {
   } else {
     if (input.down && pressed.has('run')) { p.quick = QUICK_TIME; p.quickFrom = p.yaw; p.speed = 0; sfx.step(true); }
     const running = input.run && input.up;
-    targetTurn = turnDir * (running ? 2.7 : 2.5);
+    targetTurn = turnDir * (running ? 3.5 : 3.3);
     if (input.up) targetSpeed = (running ? RUN_SPEED : WALK_SPEED) * limp;
     else if (input.down) targetSpeed = -BACK_SPEED * limp;
     if (pressed.has('action')) interact();
@@ -589,8 +600,8 @@ function updatePlayer(dt) {
 
   // 加速・減速と旋回の立ち上がり。止まるときのほうが速い
   const speeding = Math.abs(targetSpeed) > Math.abs(p.speed) && Math.sign(targetSpeed) !== -Math.sign(p.speed);
-  p.speed = approach(p.speed, targetSpeed, (speeding ? 7.5 : 11) * dt);
-  p.turnVel = approach(p.turnVel, targetTurn, (targetTurn === 0 ? 24 : 16) * dt);
+  p.speed = approach(p.speed, targetSpeed, (speeding ? 16 : 20) * dt);
+  p.turnVel = approach(p.turnVel, targetTurn, (targetTurn === 0 ? 48 : 36) * dt);
   p.yaw += p.turnVel * dt;
 
   p.x += Math.sin(p.yaw) * p.speed * dt;
@@ -617,7 +628,7 @@ function updatePlayer(dt) {
 
   if (!p.aiming) { p.lock = null; p.manual = false; }
   p.wasAiming = p.aiming;
-  p.aimW = smooth(p.aimW, p.aiming ? 1 : 0, 16, dt);
+  p.aimW = smooth(p.aimW, p.aiming ? 1 : 0, 26, dt);
   p.limpW = smooth(p.limpW, p.health < 33 ? 1 : 0, 3, dt);
 
   // しばらく立ち止まっていると、周りを見回す
@@ -653,7 +664,7 @@ function settlePlayer(dt) {
 
 function animatePlayer(dt, t) {
   playerPose(player, t, pTarget);
-  dampPose(pPose, pTarget, dt, 22);
+  dampPose(pPose, pTarget, dt, 30);
   applyPose(pModel.parts, pPose);
   gun.visible = player.aimW > 0.6;
   for (const id in weaponMeshes) weaponMeshes[id].visible = id === player.weapon;
@@ -875,7 +886,9 @@ function update(dt) {
     if (pressed.has('action')) { ui.doc.hidden = true; W.state = cutDepth > 0 ? 'event' : 'play'; const d = docDone; docDone = null; d?.(); }
     settlePlayer(dt);
   } else if (st === 'door') {
-    doorT += dt;
+    doorT += dt * 1.3; // 扉の演出は 3 秒あまりで抜ける
+    // 真っ暗なうちに部屋を組み立て、開いていく間に背景を 1 枚ずつ焼いておく
+    if (pendingDoor && !built[pendingDoor.to]) { if (!baking[pendingDoor.to]) prepareRoom(pendingDoor.to); else bakeStep(pendingDoor.to); }
     if (doorT > 0.35 && doorT < 3.6) ui.fade.style.opacity = Math.max(0, 1 - (doorT - 0.35) / 0.4);
     if (doorT > 3.6) ui.fade.style.opacity = Math.min(1, (doorT - 3.6) / 0.5);
     if (doorT > 4.2) {
@@ -950,15 +963,21 @@ function render() {
 }
 
 let lastDt = 0;
+const perf = { u: 0, r: 0, n: 0 };
 function frame(now) {
-  const dt = Math.min(0.05, (now - (lastTime ?? now)) / 1000);
+  // 描画が遅い端末でもゲームの速さは変えない：長いフレームは細かく刻んで進める
+  const dt = Math.min(0.1, (now - (lastTime ?? now)) / 1000);
   lastTime = now;
   lastDt = dt;
-  update(dt);
-  pressed.clear();
+  const t0 = performance.now();
+  const steps = Math.ceil(dt / (1 / 30)) || 1;
+  for (let i = 0; i < steps; i++) { update(dt / steps); pressed.clear(); }
+  const t1 = performance.now();
+  renderer.info.reset();
   // タイトル画面では部屋だけを背景に見せる
   pModel.root.visible = pShadow.visible = W.state !== 'title';
   render();
+  perf.u += t1 - t0; perf.r += performance.now() - t1; perf.n++;
   requestAnimationFrame(frame);
 }
 
@@ -995,4 +1014,6 @@ window.__game = {
   },
   give: (id, n) => addItem(id, n), useItem, G,
   bake: (id) => getRoom(id),
+  perf: () => { const o = { u: perf.u / perf.n, r: perf.r / perf.n }; perf.u = perf.r = perf.n = 0; return o; },
+  info: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs?.length }),
 };

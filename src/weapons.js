@@ -7,9 +7,9 @@ import { addBox, buildGeometry, newBuilder, ps1Material } from './ps1.js';
 // pellets：散弾（扇形の中の敵すべてに当たり、遠いほど弱い）、pierce：貫通（扇形の中の敵すべてに当たる）
 export const WEAPONS = {
   knife: { name: 'KNIFE', melee: true, range: 1.3, cone: 0.75, dmg: 0.6, cd: 0.5 },
-  handgun: { name: 'HANDGUN', ammo: 'ammo', cap: 15, range: 12, cone: 0.35, dmg: 1, cd: 0.42, recoil: 1, flash: 0.26 },
-  shotgun: { name: 'SHOTGUN', ammo: 'shells', cap: 7, range: 8, cone: 0.55, dmg: 3.2, cd: 1.05, pellets: true, recoil: 1.6, flash: 0.5 },
-  magnum: { name: 'MAGNUM', ammo: 'magnumAmmo', cap: 6, range: 14, cone: 0.32, dmg: 6, cd: 1.15, pierce: true, recoil: 2, flash: 0.33 },
+  handgun: { name: 'HANDGUN', ammo: 'ammo', cap: 15, range: 12, cone: 0.35, dmg: 1, cd: 0.3, recoil: 1, flash: 0.26 },
+  shotgun: { name: 'SHOTGUN', ammo: 'shells', cap: 7, range: 8, cone: 0.55, dmg: 3.2, cd: 0.85, pellets: true, recoil: 1.6, flash: 0.5 },
+  magnum: { name: 'MAGNUM', ammo: 'magnumAmmo', cap: 6, range: 14, cone: 0.32, dmg: 6, cd: 0.95, pierce: true, recoil: 2, flash: 0.33 },
 };
 
 // 弾の種類 → 使う武器

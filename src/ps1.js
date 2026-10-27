@@ -4,8 +4,10 @@ import * as THREE from 'three';
 // 16進カラーをそのまま頂点色として使うため、色空間変換を切る
 THREE.ColorManagement.enabled = false;
 
-export const RES_W = 320;
-export const RES_H = 240;
+// 画面は PS1 の高解像度モード（640×480）で描く。UI などの座標は元の 320×240 を基準にして SCALE 倍する
+export const SCALE = 2;
+export const RES_W = 320 * SCALE;
+export const RES_H = 240 * SCALE;
 export const MAX_LIGHTS = 4;
 
 // シーン全体で共有するライティング用ユニフォーム

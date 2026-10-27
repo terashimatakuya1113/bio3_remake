@@ -1,9 +1,9 @@
 // 背景の事前レンダリングと、実行時の合成
-// 高解像度で描いた絵を 320×240 に縮小し、トーンマップ → 15bit + ディザで「当時の CG 背景」にする
+// 高解像度で描いた絵を 640×480 に縮小し、トーンマップ → 15bit + ディザで「当時の CG 背景」にする
 import * as THREE from 'three';
-import { RES_W, RES_H } from './ps1.js';
+import { RES_W, RES_H, SCALE } from './ps1.js';
 
-const SS = 4; // 縦横 4 倍で描いてから縮小する
+const SS = 4 / SCALE; // 元の 320×240 から見て縦横 4 倍で描いてから縮小する
 
 const fsVert = /* glsl */ `
   varying vec2 vUv;
@@ -152,11 +152,11 @@ export function createBackdrop(renderer) {
     type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
   });
   // 毎フレーム描く演出用は 2 倍で十分
-  const hdrLive = new THREE.WebGLRenderTarget(RES_W * 2, RES_H * 2, {
+  const hdrLive = new THREE.WebGLRenderTarget(RES_W * 2 / SCALE, RES_H * 2 / SCALE, {
     type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
   });
   // 光のにじみ用：1/2 解像度で明部を抜き出し、ぼかしを 2 段かける
-  const BW = RES_W / 2, BH = RES_H / 2;
+  const BW = RES_W / 2 / SCALE, BH = RES_H / 2 / SCALE;
   const bloomOpts = { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false };
   const bloomA = new THREE.WebGLRenderTarget(BW, BH, bloomOpts), bloomB = new THREE.WebGLRenderTarget(BW, BH, bloomOpts);
   const brightMat = new THREE.ShaderMaterial({
@@ -247,15 +247,20 @@ export function createBackdrop(renderer) {
   }
 
   // 各カメラについて「蛍光灯あり／なし」の 2 枚を焼く（明滅しない部屋は 1 枚だけ）
-  function bakeRoom(room, cams, camera) {
+  // 1 回の step() で 1 カメラ分を焼く。扉の演出中に少しずつ進められる
+  function bakeRoomSteps(room, cams, camera) {
     const variant = room.bake?.variant;
-    const prevLayers = camera.layers.mask;
-    camera.layers.disableAll();
-    camera.layers.enable(1); camera.layers.enable(2);
-    renderer.shadowMap.needsUpdate = true;
     const out = [];
     const set = (on) => { variant?.(on); renderer.shadowMap.needsUpdate = true; };
-    for (const c of cams) {
+    let i = 0;
+    const step = () => {
+      if (i >= cams.length) return true;
+      const c = cams[i++];
+      const prevLayers = camera.layers.mask;
+      const prevPos = camera.position.clone(), prevQuat = camera.quaternion.clone(), prevFov = camera.fov;
+      camera.layers.disableAll();
+      camera.layers.enable(1); camera.layers.enable(2);
+      renderer.shadowMap.needsUpdate = true;
       camera.position.set(...c.pos);
       camera.fov = c.fov;
       camera.aspect = RES_W / RES_H;
@@ -268,10 +273,20 @@ export function createBackdrop(renderer) {
       let off = on;
       if (variant) { off = newTarget(); set(false); renderHQ(room.scene, camera, off, c.exposure ?? room.exposure ?? 1.0); }
       out.push({ on: on.texture, off: off.texture });
-    }
-    set(true);
-    camera.layers.mask = prevLayers;
-    return out;
+      camera.layers.mask = prevLayers;
+      camera.position.copy(prevPos); camera.quaternion.copy(prevQuat); camera.fov = prevFov;
+      camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+      if (i < cams.length) return false;
+      set(true);
+      return true;
+    };
+    return { out, step };
+  }
+
+  function bakeRoom(room, cams, camera) {
+    const job = bakeRoomSteps(room, cams, camera);
+    while (!job.step());
+    return job.out;
   }
 
   // 実行時：背景 → 部屋の奥行き → 動くもの、の順に重ねる
@@ -297,5 +312,5 @@ export function createBackdrop(renderer) {
     renderer.autoClear = true;
   }
 
-  return { bakeRoom, renderFrame, renderHQ };
+  return { bakeRoom, bakeRoomSteps, renderFrame, renderHQ };
 }

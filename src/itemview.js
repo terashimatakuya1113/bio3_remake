@@ -2,7 +2,7 @@
 // どちらもゲーム本体と同じ 320x240 のキャンバスに、ビューポートを絞って描く
 import * as THREE from 'three';
 import { makeWeaponMesh } from './weapons.js';
-import { lighting, ps1Material, newBuilder, addBox, buildGeometry, RES_H, MAX_LIGHTS } from './ps1.js';
+import { lighting, ps1Material, newBuilder, addBox, buildGeometry, RES_H, SCALE, MAX_LIGHTS } from './ps1.js';
 
 // index.html のメニュー配置（320x240 の座標）と合わせる
 export const VIEW_RECT = { x: 32, y: 20, w: 108, h: 106 };
@@ -199,9 +199,9 @@ export function createItemView() {
   }
 
   function viewport(renderer, r, color) {
-    const y = RES_H - r.y - r.h;
-    renderer.setViewport(r.x, y, r.w, r.h);
-    renderer.setScissor(r.x, y, r.w, r.h);
+    const k = SCALE, y = RES_H - (r.y + r.h) * k;
+    renderer.setViewport(r.x * k, y, r.w * k, r.h * k);
+    renderer.setScissor(r.x * k, y, r.w * k, r.h * k);
     renderer.setClearColor(color, 1);
     renderer.clear();
   }
@@ -226,7 +226,7 @@ export function createItemView() {
       renderer.clear();
       swapLights(true);
       const r = { x: 70, y: 18, w: 180, h: 140 };
-      renderer.setViewport(r.x, RES_H - r.y - r.h, r.w, r.h);
+      renderer.setViewport(r.x * SCALE, RES_H - (r.y + r.h) * SCALE, r.w * SCALE, r.h * SCALE);
       showCam.aspect = r.w / r.h; showCam.updateProjectionMatrix();
       renderer.render(scene, showCam);
       swapLights(false);

@@ -6,9 +6,9 @@ const lerp = (a, b, k) => a + (b - a) * k;
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const pos = (v) => Math.max(0, v);
 
-export const WALK_SPEED = 1.45;
-export const RUN_SPEED = 3.1;
-export const BACK_SPEED = 0.9;
+export const WALK_SPEED = 1.7;
+export const RUN_SPEED = 3.6;
+export const BACK_SPEED = 1.05;
 
 // 歩幅（左右1歩ずつ＝1周期で進む距離）。足が滑らないよう速度から位相を進める
 export function strideLength(speed) {
