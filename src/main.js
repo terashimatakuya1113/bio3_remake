@@ -14,6 +14,7 @@ import { W, PLAYER_R, angleDiff, approach, smooth, collide, pushApart, blobShado
 import { makeEnemy } from './enemies.js';
 import { makeNpc } from './npcs.js';
 import { ROOMS } from './rooms/index.js';
+import { dressRoom } from './rooms/dress.js';
 import { pickCam } from './camsel.js';
 import { STORY } from './story.js';
 
@@ -39,6 +40,7 @@ function getRoom(id) {
   if (!built[id]) {
     const room = ROOMS[id]();
     addWeaponPickups(room);
+    dressRoom(room);
     const bgs = backdrop.bakeRoom(room, room.cams, camera);
     built[id] = { room, bgs, fx: createFx(room.scene) };
   }
@@ -175,6 +177,24 @@ addEventListener('keydown', (e) => {
   if (!e.repeat) press(k);
 });
 addEventListener('keyup', (e) => { const k = KEYMAP[e.code]; if (k) release(k); });
+
+// ブラウン管テレビの映り：にじみ（わずかなぼけと色の膨らみ）と走査線。V で切り替え、選んだ状態は覚えておく
+const screenEl = document.getElementById('screen');
+let crt = true;
+try { crt = localStorage.getItem('crt') !== '0'; } catch { /* 保存できない環境では既定のまま */ }
+function applyCrt() {
+  screenEl.classList.toggle('crt', crt);
+  const u = screenEl.clientWidth / 320; // 元の 1 ドットが画面上で何 px か
+  screenEl.style.filter = crt ? `blur(${(u * 0.32).toFixed(2)}px) saturate(1.12) contrast(1.06)` : '';
+}
+addEventListener('resize', applyCrt);
+addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyV' || e.repeat) return;
+  crt = !crt;
+  try { localStorage.setItem('crt', crt ? '1' : '0'); } catch { /* 無視 */ }
+  applyCrt();
+});
+applyCrt();
 addEventListener('blur', () => { for (const k in input) input[k] = false; });
 
 document.querySelectorAll('[data-btn]').forEach((el) => {
@@ -406,18 +426,21 @@ function interact() {
   if (text) say(text);
 }
 
+// 拾う確認のあいだ、画面を暗転させてアイテムを回して見せる（原作の拾得画面の作法）
+let showcase = null;
 function pickup(pk) {
   const def = ITEMS[pk.item];
   const found = pk.found || TEXT.found[pk.item] || `「${def.name}」がある。`;
-  say([found, { ask: '取りますか？', yes: () => {
+  showcase = pk.item;
+  say([found, { ask: '取りますか？', no: () => { showcase = null; }, yes: () => {
     const stack = def.stack && player.inv.some((it) => it.id === pk.item);
-    if (!stack && player.inv.length >= 8) { say(TEXT.common.full); return; }
+    if (!stack && player.inv.length >= 8) { showcase = null; say(TEXT.common.full); return; }
     S.picked.push(pk.id);
     pk.mesh.visible = false;
     sfx.pickup();
     addItem(pk.item, pk.count || 1);
     const got = `「${def.name}」を手に入れた。${pk.count > 1 ? `（${pk.count}${AMMO_FOR[pk.item] ? '発' : '個'}）` : ''}`;
-    say([got], () => STORY[room.id]?.onPickup?.(G, pk));
+    say([got], () => { showcase = null; STORY[room.id]?.onPickup?.(G, pk); });
   } }]);
 }
 
@@ -814,6 +837,7 @@ function update(dt) {
     if (pressed.has('action')) {
       initAudio();
       ui.title.hidden = true;
+      ui.fade.style.opacity = 1;
       W.state = 'intro';
       ui.intro.hidden = false;
       introT = 0;
@@ -914,6 +938,8 @@ function render() {
   } else if (W.state === 'menu') {
     const v = menu.view();
     itemView.render(renderer, lastDt, v.id, v.inspect, pModel.root);
+  } else if (showcase && W.state === 'message') {
+    itemView.showcase(renderer, lastDt, showcase);
   } else if (W.state === 'ending') {
     renderer.setRenderTarget(null);
     renderer.setClearColor(0x000000, 1);
@@ -930,6 +956,8 @@ function frame(now) {
   lastDt = dt;
   update(dt);
   pressed.clear();
+  // タイトル画面では部屋だけを背景に見せる
+  pModel.root.visible = pShadow.visible = W.state !== 'title';
   render();
   requestAnimationFrame(frame);
 }
@@ -947,6 +975,7 @@ function updatePlayerPose() {
 flashT = 0; hurtFlash = 0; condT = 0; doorT = 0; endReady = false;
 newGame();
 W.state = 'title';
+ui.fade.style.opacity = 0; // タイトルの後ろに、薄暗い部屋を見せる
 updateLights(0);
 updateCamera(true);
 requestAnimationFrame(frame);

@@ -6,7 +6,7 @@
 <title>LAST SHIPMENT ―最終便―</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=DotGothic16&family=Shippori+Mincho:wght@700&display=swap">
 <style>
   /* 単一の暗い画面。ゲーム画面(4:3)を中央に置き、タッチ端末では下に操作ボタン */
   :root {
@@ -47,6 +47,22 @@
   #dead p { margin: 0; font-size: 3.2cqw; color: var(--dim); }
   #title h1 { font-size: 10cqw; }
   #title .sub { letter-spacing: 0.3em; }
+  /* タイトル：薄暗い部屋の背景に、金属の質感の題字（当時のタイトル画面の作法） */
+  #title { background: radial-gradient(ellipse at 50% 45%, rgba(20,0,0,0.35) 0%, rgba(0,0,0,0.78) 62%, #000 100%); gap: 1.2cqw; }
+  #title .eyebrow { font-family: "Cinzel", serif; font-size: 2.2cqw; letter-spacing: 0.6em; color: #9a8a80; }
+  #title h1 { font-family: "Cinzel", serif; font-weight: 900; font-size: 9.6cqw; letter-spacing: 0.06em; line-height: 1;
+    background: linear-gradient(180deg, #fbfbf6 0%, #c9c6bd 38%, #6d6a64 52%, #d8d4ca 70%, #8c877e 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 0.15cqw #000) drop-shadow(0.4cqw 0.5cqw 0 #3a0000) drop-shadow(0 0 2.4cqw rgba(170,10,0,0.55)); }
+  #title .sub { font-family: "Shippori Mincho", serif; font-weight: 700; font-size: 4.6cqw; letter-spacing: 0.9em; padding-left: 0.9em; color: #c01810; text-shadow: 0 0 1.6cqw rgba(200,20,0,0.6), 0.3cqw 0.3cqw 0 #000; }
+  #title .blink { font-family: "Cinzel", serif; letter-spacing: 0.3em; color: #c8c0b4; margin-top: 7cqw; font-size: 2.8cqw; }
+  #title .copy { position: absolute; bottom: 4%; font-family: "Cinzel", serif; font-size: 1.8cqw; letter-spacing: 0.2em; color: #6a645c; }
+  /* ブラウン管の映り：走査線と周辺の暗がり（V キーで切り替え） */
+  #scan { position: absolute; inset: 0; pointer-events: none; z-index: 50; display: none;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2) 100%) 0 0 / 100% calc(100% / 240),
+      radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.35) 100%); }
+  #screen.crt #scan { display: block; }
+  /* 原作どおり、プレイ中の画面には体調も弾数も出さない（ステータス画面で確かめる） */
+  #hud, #cond { display: none !important; }
   #ending { justify-content: flex-start; padding-top: 9cqw; gap: 1.6cqw; }
   #ending h2 { margin: 0 0 2cqw; font-weight: 400; font-size: 5.6cqw; letter-spacing: 0.12em; color: var(--ink); text-shadow: 0.4cqw 0.4cqw 0 var(--blood); opacity: 0; }
   #end-body p { margin: 0 8%; font-size: 3.3cqw; line-height: 1.9; color: var(--ink); transition: none; }
@@ -63,10 +79,12 @@
   #chapter { position: absolute; left: 0; right: 0; top: 38%; text-align: center; font-size: 4.6cqw; letter-spacing: 0.3em; color: var(--ink); text-shadow: 0.4cqw 0.4cqw 0 #000; pointer-events: none; animation: chap 4s ease forwards; white-space: pre-line; }
   @keyframes chap { 0% { opacity: 0; } 20% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
 
+  /* 文字窓：枠のない半透明の黒帯に白い文字（原作の文字窓の作法） */
   #msg {
-    position: absolute; left: 4%; right: 4%; bottom: 4%; min-height: 20%;
-    background: var(--panel); border: 0.4cqw solid var(--line); box-sizing: border-box;
-    padding: 2.4cqw 3.2cqw; font-size: 4.2cqw; line-height: 1.6; white-space: pre-line;
+    position: absolute; left: 7%; right: 7%; bottom: 5%; min-height: 19%;
+    background: rgba(0, 0, 0, 0.62); box-sizing: border-box;
+    padding: 2.2cqw 4cqw; font-size: 4.1cqw; line-height: 1.65; white-space: pre-line; color: #f2f2ec;
+    text-shadow: 0.25cqw 0.25cqw 0 #000;
   }
   #choice { display: flex; gap: 9cqw; justify-content: center; margin-top: 1cqw; }
   #choice span { padding-left: 3.6cqw; position: relative; color: var(--dim); }
@@ -175,17 +193,19 @@
 ヴェスパー製薬 北部物流センター</div>
   <div id="dead" class="layer" hidden><h2>YOU DIED</h2><p class="blink">▶ CONTINUE（部屋の入口から）</p></div>
   <div id="ending" class="layer" hidden><h2 id="end-title"></h2><div id="end-body"></div><p id="end-foot" class="blink"></p></div>
+  <div id="scan"></div>
   <div id="title" class="layer">
     <div class="eyebrow">A SURVIVAL HORROR HOMAGE</div>
     <h1>LAST SHIPMENT</h1>
     <div class="sub">―　最　終　便　―</div>
-    <div class="blink">PRESS Z / TAP TO START</div>
+    <div class="blink">PRESS START BUTTON</div>
+    <div class="copy">© 1998 VESPER PHARMACEUTICAL ― A FAN HOMAGE</div>
   </div>
 </div>
 
 <div class="keys">
   <kbd>↑↓←→</kbd> 移動（ラジコン操作）　<kbd>X</kbd>/<kbd>Shift</kbd> 走る　<kbd>Z</kbd> 調べる・撃つ　<kbd>C</kbd> 構える（押し続け）<br>
-  <kbd>↓</kbd>+<kbd>X</kbd> クイックターン　<kbd>I</kbd>/<kbd>Tab</kbd> ステータス画面
+  <kbd>↓</kbd>+<kbd>X</kbd> クイックターン　<kbd>I</kbd>/<kbd>Tab</kbd> ステータス画面　<kbd>V</kbd> ブラウン管の映り 切替
 </div>
 
 <div id="touch">

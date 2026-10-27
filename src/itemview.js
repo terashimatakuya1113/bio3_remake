@@ -206,7 +206,32 @@ export function createItemView() {
     renderer.clear();
   }
 
+  const showCam = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
+  showCam.position.set(0, 0.2, 1.5);
+  showCam.lookAt(0, 0, 0);
+  let showSpin = 0, showId = null;
+
   return {
+    // 拾うときの展示：暗転した画面の中央で、アイテムをゆっくり回して見せる
+    showcase(renderer, dt, id) {
+      if (id !== showId) { showSpin = -0.8; showId = id; }
+      showSpin += dt * 1.1;
+      for (const [k, m] of Object.entries(models)) m.visible = k === id;
+      pivot.rotation.set(0.3, showSpin, 0);
+      pivot.scale.setScalar(1);
+      renderer.setRenderTarget(null);
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height);
+      renderer.setClearColor(0x000000, 1);
+      renderer.clear();
+      swapLights(true);
+      const r = { x: 70, y: 18, w: 180, h: 140 };
+      renderer.setViewport(r.x, RES_H - r.y - r.h, r.w, r.h);
+      showCam.aspect = r.w / r.h; showCam.updateProjectionMatrix();
+      renderer.render(scene, showCam);
+      swapLights(false);
+      renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height);
+    },
     // id: 表示するアイテム（null なら空）。inspect 中は大きく速く回す
     render(renderer, dt, id, inspect, figure) {
       if (id !== shown) { spin = -0.6; shown = id; }
